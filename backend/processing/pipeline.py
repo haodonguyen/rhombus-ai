@@ -15,10 +15,13 @@ from pyspark.sql import functions as F
 
 from processing.errors import SourceReadError, describe_error
 from processing.file_types import FileType
+from processing.pipeline_stats import RunStats
 from processing.readers import read_source, with_row_id
 from processing.schema import MATCHED_COLUMN
 from processing.transforms.regex_replace import regex_replace
 from processing.writers import write_parquet
+
+__all__ = ["RegexReplaceSpec", "RunStats", "Stage", "run_regex_replace"]
 
 
 class Stage(StrEnum):
@@ -38,12 +41,6 @@ class RegexReplaceSpec:
     pattern: str
     replacement: str
     output_path: str
-
-
-@dataclass(frozen=True)
-class RunStats:
-    row_count: int
-    matched_count: int
 
 
 def run_regex_replace(
