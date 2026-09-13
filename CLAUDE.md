@@ -23,7 +23,7 @@ well-named modules over clever code.
 | Data engine           | PySpark (DataFrame API, never row-by-row Python)    |
 | Ingestion             | Amazon S3 → Spark DataFrame (`s3a://`), boto3 for listing |
 | Frontend              | React (Vite + TypeScript)                           |
-| LLM                   | Provider behind an interface; cache results in Redis |
+| LLM                   | Claude (`claude-opus-5`) via the `anthropic` SDK, behind an interface; cached in Redis |
 | Observability         | Flower + structured logs + task metrics             |
 | Local stack           | docker-compose, single command; MinIO/LocalStack for S3 in dev |
 
@@ -47,7 +47,7 @@ backend/
   apps/
     files/                # S3 browsing API: list files, preview schema/columns
     jobs/                 # Job model, serializers, views, urls, tasks.py
-    llm/                  # client interface, prompts, Redis cache, regex validator
+    llm/                  # Claude client, prompts, Redis cache (validator: processing/regex_safety.py)
   processing/             # PURE data layer — no Django imports
     spark_session.py      # SparkSession factory (S3A config, tuning)
     readers.py            # CSV / Excel → DataFrame
@@ -152,9 +152,9 @@ Rules:
 
 ## LLM integration
 
-- Output must be **structured** (JSON: `pattern`, `flags`, `explanation`), parsed
+- Output must be **structured** (JSON: `feasible`, `pattern`, flag booleans, `explanation`), parsed
   and schema-validated. Never `eval` or trust free text.
-- Cache key: `sha256(normalized_prompt + transform_type + model + PROMPT_VERSION)`;
+- Cache key: `sha256(PROMPT_VERSION + model + normalized_prompt)`;
   TTL configurable. Bump `PROMPT_VERSION` whenever prompts change.
 - Prompts live in `apps/llm/prompts/` with few-shot examples covering varied
   phrasings (emails, phone numbers, dates, URLs, IDs, postcodes).
@@ -196,7 +196,7 @@ All settings via environment variables (`.env.example` committed, `.env` ignored
 `DJANGO_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`,
 `CELERY_RESULT_BACKEND`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`, `S3_BUCKET`, `S3_ENDPOINT_URL` (MinIO in dev), `RESULTS_PATH`,
-`LLM_API_KEY`, `LLM_MODEL`, `LLM_CACHE_TTL`, `SPARK_MASTER`, `SPARK_DRIVER_MEMORY`.
+`ANTHROPIC_API_KEY`, `LLM_MODEL`, `LLM_CACHE_TTL`, `SPARK_MASTER`, `SPARK_DRIVER_MEMORY`.
 
 Use separate Redis DB numbers for broker, result backend and cache.
 
@@ -240,3 +240,8 @@ Ports: frontend 3000, API 8000, Flower 5555 (admin:admin), MinIO 9000 / console 
   error codes in one place.
 - Log with job_id in every task log line; expose task duration/row metrics.
 - Don't commit datasets, `.env`, or Spark output.
+
+## Git workflow
+
+- **Every commit, branch and pull request must follow the `/git-workflow` skill**
+  (`agent-skills:git-workflow-and-versioning`). Load it before committing or opening a PR.

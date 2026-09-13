@@ -284,7 +284,32 @@ whether it came from cache.
 
 ### Checkpoint: LLM
 - [ ] NL prompt → regex → Spark replacement works in the browser, and a repeat prompt hits the cache
-- [ ] Tests pass with no network access (provider mocked)
+- [x] Tests pass with no network access (provider mocked)
+
+**Phase 2 implementation notes (differences from the plan above):**
+- **Validator location:** it lives in `processing/regex_safety.py`, not `apps/llm/validation.py`. It has no
+  Django dependency and serves both raw and generated patterns: `check_syntax` runs at submit and
+  `validate_pattern` runs in the task. Its checks are length, Python-only syntax, nested or
+  overlapping quantifiers without a disjoint separator, nullable patterns, and timed probes via the
+  `regex` module's `timeout=`.
+- **Validator limitation:** Python's parser merges single-character alternations (`(\d|\w)+` →
+  `[\d\w]+`), so those overlaps go undetected. The prompt steers the model to character classes.
+- **Claude call:** `anthropic` 1.5 `client.beta.messages.parse` with a Pydantic `RegexSuggestion`
+  (`feasible`, `pattern`, three flag booleans, `explanation`) on `claude-opus-5`, using default
+  adaptive thinking. `fallbacks: "default"` is enabled (beta `server-side-fallback-2026-07-01`), and a
+  final `refusal` stop reason becomes `LLM_REFUSED`.
+- **Task wiring:** the LLM call happens in the Celery task as stage `GENERATING_REGEX`. The generated
+  pattern is saved on the job, so a retried or redelivered task never calls the LLM again.
+- **Retries:** transient API errors (429, 409, 5xx, 529, connection) get the SDK's short retries,
+  then up to three task retries at about 15, 30 and 60 seconds, then `LLM_UNAVAILABLE`. T15 still
+  covers S3 and Redis retries.
+- **Cache:** the key is `sha256(PROMPT_VERSION, model, whitespace-normalised description)` and is
+  case-sensitive. Only feasible, validated suggestions are cached, and they are re-validated when
+  read. If Redis is down the cache is skipped instead of failing the job.
+- **Raw regex option:** kept as an alternative ("Enter a regex instead"). The API requires exactly
+  one of `nl_prompt` or `pattern`.
+- **No API key:** `ANTHROPIC_API_KEY` unset means description jobs fail with `LLM_NOT_CONFIGURED`,
+  which is verified end to end.
 
 ### Phase 3: Robustness
 

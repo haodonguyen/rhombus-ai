@@ -27,9 +27,15 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
   - [ ] Human review before Phase 2
 
 ## Phase 2: LLM Integration
-- [ ] T11: Regex validator (Java compat, ReDoS, empty match, timeout) · S · deps none
-- [ ] T12: NL → regex LLM service + Redis cache, wired into task and UI · M · deps T8, T11
-- [ ] **Checkpoint: LLM** (NL prompt works, cache hit on repeat, tests offline)
+- [x] T11: Regex validator (Java compat, ReDoS, empty match, timeout) · S · deps none
+- [x] T12: NL → regex LLM service + Redis cache, wired into task and UI · M · deps T8, T11
+- [ ] **Checkpoint: LLM**
+  - [x] Tests pass offline with a mocked Claude client: backend 153 + ruff; frontend 23 + lint + tsc
+  - [x] Without a key, description jobs fail as LLM_NOT_CONFIGURED; raw regex jobs still succeed;
+        unsafe raw regex is rejected in the worker as INVALID_PATTERN
+  - [ ] Live Claude run: description → regex → Spark in the browser, repeat hits the cache
+        (needs `ANTHROPIC_API_KEY` in `.env`)
+  - [ ] Human review before Phase 3
 
 ## Phase 3: Robustness
 - [ ] T13: Live progress (stages + SparkStatusTracker, throttled) + progress bar · S · deps T8
