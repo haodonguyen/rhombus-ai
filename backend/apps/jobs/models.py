@@ -63,7 +63,11 @@ class Job(models.Model):
     transform_type = models.CharField(
         max_length=32, choices=TransformType.choices, default=TransformType.REGEX_REPLACE
     )
-    pattern = models.TextField()
+    # Either the user supplies `pattern` directly, or `nl_prompt` and the task generates it.
+    nl_prompt = models.TextField(blank=True, default="")
+    pattern = models.TextField(blank=True, default="")
+    pattern_explanation = models.TextField(blank=True, default="")
+    llm_cached = models.BooleanField(null=True, blank=True)
     replacement_value = models.TextField(blank=True, default="")
 
     result_path = models.CharField(max_length=1024, blank=True, default="")

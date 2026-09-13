@@ -107,6 +107,38 @@ def test_submit_allows_empty_replacement(api_client, people_csv, enqueue):
     assert response.status_code == 202
 
 
+def test_submit_with_description_leaves_pattern_for_the_task(api_client, people_csv, enqueue):
+    response = api_client.post(
+        "/api/jobs/", payload(pattern="", nl_prompt="  find email addresses "), format="json"
+    )
+
+    assert response.status_code == 202
+    job = Job.objects.get(pk=response.json()["id"])
+    assert (job.nl_prompt, job.pattern) == ("find email addresses", "")
+    assert response.json()["llm_cached"] is None
+
+
+def test_submit_requires_a_description_or_a_pattern(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", payload(pattern=""), format="json")
+
+    assert response.status_code == 400
+    assert "Describe what to find" in response.json()["error"]["details"]["nl_prompt"][0]
+
+
+def test_submit_rejects_description_and_pattern_together(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", payload(nl_prompt="emails"), format="json")
+
+    assert response.status_code == 400
+    assert "not both" in response.json()["error"]["details"]["nl_prompt"][0]
+
+
+def test_submit_rejects_regex_syntax_java_cannot_run(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", payload(pattern=r"(?P<user>\w+)@"), format="json")
+
+    assert response.status_code == 400
+    assert "named groups" in response.json()["error"]["details"]["pattern"][0]
+
+
 # --- detail -------------------------------------------------------------------------
 
 

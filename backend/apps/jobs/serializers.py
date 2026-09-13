@@ -1,10 +1,11 @@
-import re
 from typing import Any
 
 from rest_framework import serializers
 
 from apps.jobs.models import Job
+from processing.errors import InvalidPatternError
 from processing.file_types import FileType
+from processing.regex_safety import MAX_PATTERN_LENGTH, check_syntax
 
 
 class RegexReplaceJobCreateSerializer(serializers.Serializer):
@@ -14,7 +15,14 @@ class RegexReplaceJobCreateSerializer(serializers.Serializer):
         min_length=1,
         max_length=50,
     )
-    pattern = serializers.CharField(max_length=500, trim_whitespace=False)
+    nl_prompt = serializers.CharField(max_length=2000, required=False, default="", allow_blank=True)
+    pattern = serializers.CharField(
+        max_length=MAX_PATTERN_LENGTH,
+        required=False,
+        default="",
+        allow_blank=True,
+        trim_whitespace=False,
+    )
     replacement_value = serializers.CharField(
         max_length=1000, required=False, default="", allow_blank=True, trim_whitespace=False
     )
@@ -28,12 +36,23 @@ class RegexReplaceJobCreateSerializer(serializers.Serializer):
         return list(dict.fromkeys(value))
 
     def validate_pattern(self, value: str) -> str:
-        # A basic syntax check; Spark re-validates against the Java regex engine.
-        try:
-            re.compile(value)
-        except re.error as exc:
-            raise serializers.ValidationError(f"Invalid regular expression: {exc}") from exc
+        # Cheap syntax checks only; the task runs the full safety validation.
+        if value:
+            try:
+                check_syntax(value)
+            except InvalidPatternError as exc:
+                raise serializers.ValidationError(str(exc)) from exc
         return value
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if bool(attrs["nl_prompt"]) == bool(attrs["pattern"]):
+            message = (
+                "Provide either a description or a regex, not both."
+                if attrs["nl_prompt"]
+                else "Describe what to find, or enter a regex."
+            )
+            raise serializers.ValidationError({"nl_prompt": [message]})
+        return attrs
 
 
 class JobSerializer(serializers.ModelSerializer):
@@ -50,7 +69,10 @@ class JobSerializer(serializers.ModelSerializer):
             "file_type",
             "target_columns",
             "transform_type",
+            "nl_prompt",
             "pattern",
+            "pattern_explanation",
+            "llm_cached",
             "replacement_value",
             "row_count",
             "matched_count",
