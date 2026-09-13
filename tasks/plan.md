@@ -227,9 +227,26 @@ The UI renders a paginated table.
 **Scope:** M
 
 ### Checkpoint: Core Pipeline
-- [ ] Browser flow works end to end: pick file → columns → raw regex → progress → paginated results
-- [ ] All backend, Spark and frontend tests pass
+- [x] Browser flow works end to end: pick file → columns → raw regex → progress → paginated results
+- [x] All backend, Spark and frontend tests pass
 - [ ] Human review before adding the LLM
+
+**Phase 1 implementation notes (differences from the plan above):**
+- Supported types are `.csv` and `.xlsx` only; `.xls` was dropped because openpyxl cannot
+  preview it.
+- XLSX reading is already wired into `processing/readers.py`. That reduces T16 to tests,
+  corrupt-file handling and partitioning notes.
+- Stages are `LOADING → TRANSFORMING → FINALIZING`. Transform and write are one Spark
+  action, so a separate WRITING stage would be misleading.
+- Row order uses `monotonically_increasing_id()` as `__row_id`, with no `zipWithIndex` and
+  therefore no Python round trip. Pages use a two-step DuckDB query: LIMIT/OFFSET on the
+  id column, then BETWEEN.
+- Java regex compatibility is checked in the JVM (`Pattern.compile`) before the transform,
+  so Python-only syntax fails as `INVALID_PATTERN`.
+- Known trade-off: Spark's CSV reader turns empty fields into `null`, and they show as
+  `null` in results. Revisit in T15/T16 (e.g. render as empty, or set `emptyValue`).
+- The standard error shape and domain exceptions (planned for T15) were introduced now,
+  because the files and jobs APIs needed them.
 
 ### Phase 2: LLM Integration
 

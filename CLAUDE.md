@@ -79,11 +79,11 @@ scripts/                  # dataset generator, benchmark, seed-bucket
 `Job`:
 - `id` (UUID), `created_at`, `updated_at`, `started_at`, `finished_at`
 - `status`: `QUEUED | RUNNING | SUCCESS | FAILED` (exactly these four, per brief)
-- `progress` (0–100 int) and `stage` (e.g. `LOADING`, `GENERATING_REGEX`,
-  `TRANSFORMING`, `WRITING`)
-- `source_key` (S3 key), `file_type`, `target_columns` (JSON list)
+- `progress` (0–100 int) and `stage` (`LOADING`, `TRANSFORMING`, `FINALIZING`;
+  Phase 2 adds `GENERATING_REGEX`)
+- `source_key` (S3 key), `file_type` (`csv` | `xlsx`), `target_columns` (JSON list)
 - `transform_type` (`regex_replace` | the two extra transforms)
-- `nl_prompt`, `replacement_value`, `generated_pattern`, `llm_cached` (bool)
+- `pattern` (the regex applied), `replacement_value`; Phase 2 adds `nl_prompt`, `llm_cached`
 - `result_path` (Parquet location), `row_count`, `matched_count`
 - `error_code`, `error_message`, `celery_task_id`
 
@@ -211,7 +211,7 @@ distributed mode. Add healthchecks and `depends_on: condition: service_healthy`.
 
 ```bash
 docker compose up --build                 # whole stack (web runs migrations on start)
-docker compose exec web pytest            # backend tests
+docker compose exec worker pytest         # full backend suite (Spark tests need the worker)
 docker compose exec web ruff check .      # backend lint
 docker compose exec web python manage.py shell -c "from apps.core.tasks import spark_smoke_test as t; print(t.delay().get(timeout=600))"
 cd frontend && npm run dev                # Vite dev server, proxies /api to :8000

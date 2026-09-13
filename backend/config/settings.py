@@ -18,6 +18,8 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "apps.core",
+    "apps.files",
+    "apps.jobs",
 ]
 
 MIDDLEWARE = [
@@ -63,6 +65,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "UNAUTHENTICATED_USER": None,
+    "EXCEPTION_HANDLER": "config.exception_handler.api_exception_handler",
 }
 
 # --- Celery ---------------------------------------------------------------

@@ -7,6 +7,14 @@
     sans-serif;
   color: #1f2328;
   background: #f6f8fa;
+  --border: #d0d7de;
+  --muted: #59636e;
+  --accent: #0969da;
+  --danger-bg: #ffebe9;
+  --danger-fg: #a40e26;
+  --success-bg: #dafbe1;
+  --success-fg: #116329;
+  --highlight: #fff8c5;
 }
 
 body {
@@ -26,6 +34,61 @@ body {
   gap: 1rem;
 }
 
+.workflow {
+  display: grid;
+  gap: 1rem;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  min-width: 0;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.mono,
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.secondary {
+  background: #fff;
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
 .status {
   font-size: 0.875rem;
   padding: 0.25rem 0.75rem;
@@ -34,12 +97,205 @@ body {
 }
 
 .status[data-state="ok"] {
-  background: #dafbe1;
-  color: #116329;
+  background: var(--success-bg);
+  color: var(--success-fg);
 }
 
 .status[data-state="degraded"],
 .status[data-state="unreachable"] {
-  background: #ffebe9;
-  color: #a40e26;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.notice {
+  background: var(--highlight);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+
+.file-list {
+  list-style: none;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.file-option {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.file-option[data-selected="true"] {
+  background: #ddf4ff;
+}
+
+.file-name {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.column-picker fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 0.75rem;
+}
+
+.column-picker legend {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.data-table caption {
+  text-align: left;
+  color: var(--muted);
+  padding-bottom: 0.3rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-table tr.matched td {
+  background: var(--highlight);
+}
+
+.null {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.job-form {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 40rem;
+  margin-top: 1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+.field-error {
+  color: var(--danger-fg);
+  margin: 0;
+}
+
+.job-form button[type="submit"] {
+  justify-self: start;
+}
+
+.job-status-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: #eaeef2;
+}
+
+.badge[data-status="RUNNING"] {
+  background: #ddf4ff;
+  color: var(--accent);
+}
+
+.badge[data-status="SUCCESS"] {
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+
+.badge[data-status="FAILED"] {
+  background: var(--danger-bg);
+  color: var(--danger-fg);
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.75rem 0;
+}
+
+.progress-row progress {
+  flex: 1;
+  max-width: 24rem;
+}
+
+.job-meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0;
+}
+
+.job-meta dt {
+  color: var(--muted);
+}
+
+.job-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
 }

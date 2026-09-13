@@ -1,0 +1,77 @@
+"""Job use cases for the API layer. Submission does no heavy work: it validates, persists
+and enqueues, then returns.
+"""
+
+from dataclasses import dataclass
+from uuid import UUID
+
+from django.db import transaction
+
+from apps.files import services as file_services
+from apps.files.exceptions import PreviewUnavailable, StoredFileNotFound
+from apps.jobs.exceptions import InvalidJobRequest, JobNotFound, JobNotReady
+from apps.jobs.models import Job, JobStatus, TransformType
+from apps.jobs.results import ResultsPage, read_results_page
+from apps.jobs.tasks import run_job
+from processing.schema import find_missing_columns
+
+
+@dataclass(frozen=True)
+class RegexReplaceRequest:
+    source_key: str
+    target_columns: list[str]
+    pattern: str
+    replacement_value: str
+
+
+def submit_regex_replace_job(request: RegexReplaceRequest) -> Job:
+    file_type = file_services.get_file_type(request.source_key)
+    validate_source(request.source_key, request.target_columns)
+
+    job = Job.objects.create(
+        source_key=request.source_key,
+        file_type=file_type,
+        target_columns=request.target_columns,
+        transform_type=TransformType.REGEX_REPLACE,
+        pattern=request.pattern,
+        replacement_value=request.replacement_value,
+    )
+    # The task id is the job id, so cancellation can revoke by job id later.
+    job.celery_task_id = str(job.id)
+    job.save(update_fields=["celery_task_id"])
+    # Enqueue only after commit, so the worker never looks up a job that isn't saved yet.
+    transaction.on_commit(lambda: run_job.apply_async(args=[str(job.id)], task_id=str(job.id)))
+    return job
+
+
+def validate_source(key: str, columns: list[str]) -> None:
+    """Reject missing files and unknown columns up front, using the cheap preview reader.
+
+    Files too large to preview are not checked here; the Spark job checks them again anyway.
+    """
+    try:
+        preview = file_services.get_file_preview(key)
+    except StoredFileNotFound as exc:
+        raise InvalidJobRequest(details={"source_key": [exc.message]}) from exc
+    except PreviewUnavailable:
+        return
+
+    missing = find_missing_columns(preview.columns, columns)
+    if missing:
+        raise InvalidJobRequest(
+            details={"target_columns": [f"Column(s) not found in file: {', '.join(missing)}"]}
+        )
+
+
+def get_job(job_id: UUID) -> Job:
+    try:
+        return Job.objects.get(pk=job_id)
+    except Job.DoesNotExist as exc:
+        raise JobNotFound() from exc
+
+
+def get_job_results(job_id: UUID, page: int, page_size: int) -> ResultsPage:
+    job = get_job(job_id)
+    if job.status != JobStatus.SUCCESS:
+        raise JobNotReady()
+    return read_results_page(job.result_path, job.row_count or 0, page, page_size)

@@ -14,13 +14,17 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
   - [ ] Human review before Phase 1
 
 ## Phase 1: Core Pipeline (raw regex, no LLM)
-- [ ] T5: Browse S3 files (API + UI) · M · deps T3, T4
-- [ ] T6: Column preview (API + UI) · S · deps T5
-- [ ] T7: Spark `regex_replace` transform + readers/writers + Spark tests · M · deps T4
-- [ ] T8: Job model + submit (202) / poll API + `run_job` Celery task · M · deps T7
-- [ ] T9: Job UI: submit form + status polling with backoff · M · deps T6, T8
-- [ ] T10: Paginated results via DuckDB over Parquet (API + table UI) · M · deps T8, T9
-- [ ] **Checkpoint: Core Pipeline** (browser flow end to end, human review)
+- [x] T5: Browse S3 files (API + UI) · M · deps T3, T4
+- [x] T6: Column preview (API + UI) · S · deps T5
+- [x] T7: Spark `regex_replace` transform + readers/writers + Spark tests · M · deps T4
+- [x] T8: Job model + submit (202) / poll API + `run_job` Celery task · M · deps T7
+- [x] T9: Job UI: submit form + status polling with backoff · M · deps T6, T8
+- [x] T10: Paginated results via DuckDB over Parquet (API + table UI) · M · deps T8, T9
+- [ ] **Checkpoint: Core Pipeline**
+  - [x] Browser flow end to end: file → Email column → brief regex → SUCCESS → paginated table
+  - [x] Tests pass: backend 82 (incl. Spark + tasks, in worker) + ruff; frontend 20 + lint + tsc
+  - [x] API run: submit 202 in 160 ms; 1000 rows / 1000 matched; Java-only regex → INVALID_PATTERN
+  - [ ] Human review before Phase 2
 
 ## Phase 2: LLM Integration
 - [ ] T11: Regex validator (Java compat, ReDoS, empty match, timeout) · S · deps none

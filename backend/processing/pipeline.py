@@ -1,0 +1,83 @@
+"""End-to-end runs: read source -> transform -> write Parquet -> collect stats.
+
+Framework-free: callers supply the SparkSession and an optional stage callback, which the
+task layer uses to report progress.
+"""
+
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from enum import StrEnum
+
+from py4j.protocol import Py4JJavaError
+from pyspark.errors.exceptions.captured import CapturedException
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+
+from processing.errors import SourceReadError, describe_error
+from processing.file_types import FileType
+from processing.readers import read_source, with_row_id
+from processing.schema import MATCHED_COLUMN
+from processing.transforms.regex_replace import regex_replace
+from processing.writers import write_parquet
+
+
+class Stage(StrEnum):
+    LOADING = "LOADING"
+    TRANSFORMING = "TRANSFORMING"
+    FINALIZING = "FINALIZING"
+
+
+StageCallback = Callable[[Stage], None]
+
+
+@dataclass(frozen=True)
+class RegexReplaceSpec:
+    source_uri: str
+    file_type: FileType
+    columns: Sequence[str]
+    pattern: str
+    replacement: str
+    output_path: str
+
+
+@dataclass(frozen=True)
+class RunStats:
+    row_count: int
+    matched_count: int
+
+
+def run_regex_replace(
+    spark: SparkSession, spec: RegexReplaceSpec, on_stage: StageCallback | None = None
+) -> RunStats:
+    notify = on_stage or (lambda _stage: None)
+
+    notify(Stage.LOADING)
+    source = load_source(spark, spec.source_uri, spec.file_type)
+
+    notify(Stage.TRANSFORMING)
+    # Transform and write are a single Spark action: one pass over the data.
+    transformed = regex_replace(source, spec.columns, spec.pattern, spec.replacement)
+    write_parquet(transformed, spec.output_path)
+
+    notify(Stage.FINALIZING)
+    return collect_stats(spark, spec.output_path)
+
+
+def load_source(spark: SparkSession, uri: str, file_type: FileType) -> DataFrame:
+    try:
+        return with_row_id(read_source(spark, uri, file_type))
+    except (CapturedException, Py4JJavaError) as exc:
+        raise SourceReadError(f"Could not read the source file: {describe_error(exc)}") from exc
+
+
+def collect_stats(spark: SparkSession, output_path: str) -> RunStats:
+    """Count rows and matches from the written Parquet, which reads a single column."""
+    row = (
+        spark.read.parquet(output_path)
+        .agg(
+            F.count(F.lit(1)).alias("rows"),
+            F.coalesce(F.sum(F.col(MATCHED_COLUMN).cast("long")), F.lit(0)).alias("matched"),
+        )
+        .first()
+    )
+    return RunStats(row_count=int(row["rows"]), matched_count=int(row["matched"]))
