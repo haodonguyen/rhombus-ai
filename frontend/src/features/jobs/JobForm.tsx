@@ -5,6 +5,8 @@ import { describeError, fieldErrors } from "../../api/client";
 import { createJob, type Job } from "../../api/jobs";
 import { jobQueryKey } from "./useJob";
 
+type PatternMode = "describe" | "regex";
+
 interface JobFormProps {
   sourceKey: string;
   targetColumns: string[];
@@ -14,6 +16,8 @@ interface JobFormProps {
 export function JobForm({ sourceKey, targetColumns, onSubmitted }: JobFormProps) {
   const id = useId();
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<PatternMode>("describe");
+  const [description, setDescription] = useState("");
   const [pattern, setPattern] = useState("");
   const [replacement, setReplacement] = useState("");
 
@@ -27,36 +31,64 @@ export function JobForm({ sourceKey, targetColumns, onSubmitted }: JobFormProps)
   });
 
   const errors = fieldErrors(mutation.error);
-  const canSubmit = targetColumns.length > 0 && pattern.length > 0 && !mutation.isPending;
+  const trimmedDescription = description.trim();
+  const hasPatternInput = mode === "describe" ? trimmedDescription.length > 0 : pattern.length > 0;
+  const canSubmit = targetColumns.length > 0 && hasPatternInput && !mutation.isPending;
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
-    mutation.mutate({
+    const common = {
       source_key: sourceKey,
       target_columns: targetColumns,
-      pattern,
       replacement_value: replacement,
-    });
+    };
+    mutation.mutate(
+      mode === "describe" ? { ...common, nl_prompt: trimmedDescription } : { ...common, pattern },
+    );
   }
 
   return (
     <form className="job-form" onSubmit={handleSubmit} noValidate>
-      <div className="field">
-        <label htmlFor={`${id}-pattern`}>Regex pattern</label>
-        <input
-          id={`${id}-pattern`}
-          className="mono"
-          value={pattern}
-          onChange={(event) => setPattern(event.target.value)}
-          placeholder={String.raw`\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b`}
-          spellCheck={false}
-          autoComplete="off"
-          aria-invalid={errors.pattern ? true : undefined}
-          aria-describedby={errors.pattern ? `${id}-pattern-error` : undefined}
-        />
-        <FieldError id={`${id}-pattern-error`} messages={errors.pattern} />
-      </div>
+      {mode === "describe" ? (
+        <div className="field">
+          <label htmlFor={`${id}-description`}>Describe what to find</label>
+          <textarea
+            id={`${id}-description`}
+            rows={2}
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="e.g. email addresses, or phone numbers in any format"
+            aria-invalid={errors.nl_prompt ? true : undefined}
+            aria-describedby={errors.nl_prompt ? `${id}-description-error` : undefined}
+          />
+          <FieldError id={`${id}-description-error`} messages={errors.nl_prompt} />
+        </div>
+      ) : (
+        <div className="field">
+          <label htmlFor={`${id}-pattern`}>Regex pattern</label>
+          <input
+            id={`${id}-pattern`}
+            className="mono"
+            value={pattern}
+            onChange={(event) => setPattern(event.target.value)}
+            placeholder={String.raw`\b[\w.%+-]+@[\w.-]+\.[A-Za-z]{2,}\b`}
+            spellCheck={false}
+            autoComplete="off"
+            aria-invalid={errors.pattern ? true : undefined}
+            aria-describedby={errors.pattern ? `${id}-pattern-error` : undefined}
+          />
+          <FieldError id={`${id}-pattern-error`} messages={errors.pattern} />
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="link"
+        onClick={() => setMode((current) => (current === "describe" ? "regex" : "describe"))}
+      >
+        {mode === "describe" ? "Enter a regex instead" : "Describe it in plain English instead"}
+      </button>
 
       <div className="field">
         <label htmlFor={`${id}-replacement`}>Replacement value</label>

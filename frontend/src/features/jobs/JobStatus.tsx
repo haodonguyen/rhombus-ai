@@ -36,10 +36,29 @@ export function JobStatus({ jobId }: { jobId: string }) {
         <dd>{job.source_key}</dd>
         <dt>Columns</dt>
         <dd>{job.target_columns.join(", ")}</dd>
+        {job.nl_prompt && (
+          <>
+            <dt>Description</dt>
+            <dd>{job.nl_prompt}</dd>
+          </>
+        )}
         <dt>Pattern</dt>
         <dd>
-          <code>{job.pattern}</code>
+          {job.pattern ? (
+            <>
+              <code>{job.pattern}</code>
+              {job.llm_cached && <span className="badge subtle">cached</span>}
+            </>
+          ) : (
+            <span className="muted">{finished ? "—" : "Generating…"}</span>
+          )}
         </dd>
+        {job.pattern_explanation && (
+          <>
+            <dt>Explanation</dt>
+            <dd>{job.pattern_explanation}</dd>
+          </>
+        )}
         <dt>Replacement</dt>
         <dd>
           <code>{job.replacement_value || "(empty)"}</code>

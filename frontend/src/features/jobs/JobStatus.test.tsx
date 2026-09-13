@@ -19,12 +19,55 @@ describe("JobStatus", () => {
     );
   });
 
+  it("shows the description while the regex is being generated", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          status: "RUNNING",
+          stage: "GENERATING_REGEX",
+          progress: 5,
+          nl_prompt: "email addresses",
+          pattern: "",
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("Generating regex…")).toBeInTheDocument();
+    expect(screen.getByText("email addresses")).toBeInTheDocument();
+    expect(screen.getByText("Generating…")).toBeInTheDocument();
+  });
+
+  it("shows the generated pattern, its explanation and a cache hit", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          status: "SUCCESS",
+          progress: 100,
+          nl_prompt: "email addresses",
+          pattern: "\\S+@\\S+",
+          pattern_explanation: "Matches email addresses.",
+          llm_cached: true,
+          row_count: 3,
+          matched_count: 3,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("\\S+@\\S+")).toBeInTheDocument();
+    expect(screen.getByText("Matches email addresses.")).toBeInTheDocument();
+    expect(screen.getByText("cached")).toBeInTheDocument();
+  });
+
   it("shows the error for failed jobs", async () => {
     mockFetch(() =>
       jsonResponse(
         makeJob({
           status: "FAILED",
-          error: { code: "COLUMN_NOT_FOUND", message: "Column(s) not found: Phone" },
+          error: { code: "PATTERN_NOT_EXPRESSIBLE", message: "Sentiment is not a pattern." },
         }),
       ),
     );
@@ -32,7 +75,7 @@ describe("JobStatus", () => {
     renderWithClient(<JobStatus jobId="job-1" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "COLUMN_NOT_FOUND Column(s) not found: Phone",
+      "PATTERN_NOT_EXPRESSIBLE Sentiment is not a pattern.",
     );
   });
 

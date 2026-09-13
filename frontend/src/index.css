@@ -82,11 +82,31 @@ button:disabled {
 }
 
 input,
-select {
+select,
+textarea {
   font: inherit;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button.link {
+  justify-self: start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.badge.subtle {
+  margin-left: 0.5rem;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .status {

@@ -12,7 +12,13 @@ export interface Job {
   file_type: FileType;
   target_columns: string[];
   transform_type: string;
+  /** Plain-English description; empty when the user entered a regex directly. */
+  nl_prompt: string;
+  /** Applied regex. Empty until generated when the job was submitted with a description. */
   pattern: string;
+  pattern_explanation: string;
+  /** Whether the generated pattern came from the cache; null when no LLM was involved. */
+  llm_cached: boolean | null;
   replacement_value: string;
   row_count: number | null;
   matched_count: number | null;
@@ -22,12 +28,12 @@ export interface Job {
   finished_at: string | null;
 }
 
-export interface CreateRegexReplaceJob {
+/** Provide exactly one of `nl_prompt` or `pattern`. */
+export type CreateRegexReplaceJob = {
   source_key: string;
   target_columns: string[];
-  pattern: string;
   replacement_value: string;
-}
+} & ({ nl_prompt: string; pattern?: never } | { pattern: string; nl_prompt?: never });
 
 export interface ResultRow {
   row_number: number;
