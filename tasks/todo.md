@@ -1,0 +1,56 @@
+# TODO: NL-to-Regex Data Processing Platform
+
+Details, acceptance criteria and verification for each task are in `tasks/plan.md`.
+
+## Phase 0: Walking Skeleton and Risk Spike
+- [x] T1: Compose skeleton with Django health endpoint (web, postgres, redis) · M
+- [x] T2: Celery worker (Java + PySpark image) and Flower · S · deps T1
+- [x] T3: Frontend skeleton (Vite + React + TS, nginx, health check) · M · deps T1
+- [x] T4: Spike: Spark reads CSV + XLSX from MinIO via S3A, writes Parquet · M · deps T2
+- [ ] **Checkpoint: Foundation**
+  - [x] One-command stack: `docker compose up --build`, all services healthy
+  - [x] Tests and builds pass: backend pytest 10/10 + ruff; frontend lint, 3/3 tests, build
+  - [x] Versions confirmed (see Architecture Decisions in plan.md)
+  - [ ] Human review before Phase 1
+
+## Phase 1: Core Pipeline (raw regex, no LLM)
+- [ ] T5: Browse S3 files (API + UI) · M · deps T3, T4
+- [ ] T6: Column preview (API + UI) · S · deps T5
+- [ ] T7: Spark `regex_replace` transform + readers/writers + Spark tests · M · deps T4
+- [ ] T8: Job model + submit (202) / poll API + `run_job` Celery task · M · deps T7
+- [ ] T9: Job UI: submit form + status polling with backoff · M · deps T6, T8
+- [ ] T10: Paginated results via DuckDB over Parquet (API + table UI) · M · deps T8, T9
+- [ ] **Checkpoint: Core Pipeline** (browser flow end to end, human review)
+
+## Phase 2: LLM Integration
+- [ ] T11: Regex validator (Java compat, ReDoS, empty match, timeout) · S · deps none
+- [ ] T12: NL → regex LLM service + Redis cache, wired into task and UI · M · deps T8, T11
+- [ ] **Checkpoint: LLM** (NL prompt works, cache hit on repeat, tests offline)
+
+## Phase 3: Robustness
+- [ ] T13: Live progress (stages + SparkStatusTracker, throttled) + progress bar · S · deps T8
+- [ ] T14: Cancellation (revoke + cancelJobGroup) API + button · S · deps T13
+- [ ] T15: Retries, time limits, domain exceptions → error codes, UI error states · M · deps T12
+- [ ] T16: Excel support in pipeline (spark-excel) · S · deps T7, T15
+- [ ] **Checkpoint: Robustness** (human review)
+
+## Phase 4: Additional LLM Transformations
+- [ ] T17: Transform registry + format normalization transform · M · deps T12
+- [ ] T18: PII detection & partial masking transform · M · deps T17
+- [ ] **Checkpoint: Transformations** (all three run via same pipeline)
+
+## Phase 5: Scale and Observability
+- [ ] T19: 5M-row dataset generator, benchmark, partition/AQE tuning · M · deps T10, T13, T16
+- [ ] T20: Structured logs with job_id, per-job metrics, Flower auth · S · deps T8
+- [ ] **Checkpoint: Scale**
+
+## Phase 6: Ship
+- [ ] T21: Production config + public deployment + smoke test · M · deps T19, T20
+- [ ] T22: README (architecture, partitioning, benchmarks, trade-offs) + demo video · S · deps T21
+- [ ] **Checkpoint: Complete** (CLAUDE.md deliverables checklist all ticked)
+
+## Open Questions (answer before T12 / T21)
+- [ ] LLM provider
+- [ ] Deployment target
+- [ ] Production S3 bucket + credentials
+- [ ] Confirm the two extra transforms

@@ -1,0 +1,3 @@
+# Worker-only dependencies. Spark connector jars are resolved at image build time
+# by docker/fetch_spark_jars.py, matched to the Hadoop version bundled with PySpark.
+pyspark>=3.5.9,<3.6

@@ -1,0 +1,45 @@
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  color: #1f2328;
+  background: #f6f8fa;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.status {
+  font-size: 0.875rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: #eaeef2;
+}
+
+.status[data-state="ok"] {
+  background: #dafbe1;
+  color: #116329;
+}
+
+.status[data-state="degraded"],
+.status[data-state="unreachable"] {
+  background: #ffebe9;
+  color: #a40e26;
+}
