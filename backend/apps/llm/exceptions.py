@@ -1,0 +1,50 @@
+"""Failures while turning a description into a pattern.
+
+The task layer records `code` and the message on the job, so messages must be safe to
+show to end users. Details belong in logs.
+"""
+
+
+class LLMError(Exception):
+    code = "LLM_ERROR"
+    default_message = "The language model could not produce a pattern."
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(message or self.default_message)
+
+
+class LLMNotConfigured(LLMError):
+    code = "LLM_NOT_CONFIGURED"
+    default_message = (
+        "Natural-language patterns are not available because the language model is not "
+        "configured. Enter a regex instead."
+    )
+
+
+class LLMUnavailable(LLMError):
+    """Transient: rate limits, overload or network failures. Worth retrying later."""
+
+    code = "LLM_UNAVAILABLE"
+    default_message = "The language model is temporarily unavailable. Please try again shortly."
+
+
+class LLMRequestFailed(LLMError):
+    code = "LLM_REQUEST_FAILED"
+    default_message = "The request to the language model failed."
+
+
+class LLMRefused(LLMError):
+    code = "LLM_REFUSED"
+    default_message = "The language model declined this request. Try rephrasing the description."
+
+
+class LLMInvalidResponse(LLMError):
+    code = "LLM_INVALID_RESPONSE"
+    default_message = (
+        "The language model returned an unusable answer. Try rephrasing the description."
+    )
+
+
+class PatternNotExpressible(LLMError):
+    code = "PATTERN_NOT_EXPRESSIBLE"
+    default_message = "This description cannot be expressed as a regular expression."

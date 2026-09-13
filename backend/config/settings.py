@@ -97,6 +97,14 @@ SPARK_DRIVER_MEMORY = env("SPARK_DRIVER_MEMORY", default="2g")
 SPARK_SHUFFLE_PARTITIONS = env.int("SPARK_SHUFFLE_PARTITIONS", default=8)
 SPARK_JARS_DIR = env("SPARK_JARS_DIR", default=None)
 
+# --- LLM ----------------------------------------------------------------------
+# Empty key disables natural-language patterns; raw regex jobs still work.
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+LLM_MODEL = env("LLM_MODEL", default="claude-opus-5")
+LLM_CACHE_TTL = env.int("LLM_CACHE_TTL", default=60 * 60 * 24 * 7)
+LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=120.0)
+LLM_MAX_RETRIES = env.int("LLM_MAX_RETRIES", default=2)
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

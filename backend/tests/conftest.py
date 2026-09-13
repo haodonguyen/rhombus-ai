@@ -13,6 +13,16 @@ if importlib.util.find_spec("pyspark") is None:
 TEST_BUCKET = "test-bucket"
 
 
+@pytest.fixture(autouse=True)
+def isolated_services(settings):
+    """Every test gets an empty in-memory cache and no LLM credentials."""
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+    settings.ANTHROPIC_API_KEY = ""
+    from django.core.cache import cache
+
+    cache.clear()
+
+
 @pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
@@ -28,7 +38,7 @@ def make_job(db):
             "source_key": "samples/people.csv",
             "file_type": "csv",
             "target_columns": ["Email"],
-            "pattern": r"\S+@\S+",
+            "pattern": r"@example\.com",
             "replacement_value": "REDACTED",
             **overrides,
         }
