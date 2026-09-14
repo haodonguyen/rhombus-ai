@@ -34,7 +34,10 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
   - [x] Without a key, description jobs fail as LLM_NOT_CONFIGURED; raw regex jobs still succeed;
         unsafe raw regex is rejected in the worker as INVALID_PATTERN
   - [x] Live run with local Ollama via the API: description → regex → Spark, and a repeated
-        description is served from the cache (0.9 s job); the browser check is still to do
+        description is served from the cache (0.9 s job)
+  - [x] Browser: "phone numbers" on Phone → generated pattern + explanation shown, 1000/1000
+        replaced. Quirk: `\b` before the optional `\+` leaves a stray "+" ("+[phone]");
+        prompt tuning candidate
   - [ ] Human review before Phase 3
 
 ## Phase 3: Robustness
