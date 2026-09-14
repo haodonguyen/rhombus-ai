@@ -3,6 +3,27 @@ import type { FileType } from "./files";
 
 export type JobStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
 
+export type TransformType = "regex_replace" | "normalize_format" | "mask_pii";
+
+export type PiiType =
+  "none" | "email" | "phone" | "person_name" | "credit_card" | "identifier" | "address" | "other";
+
+/** LLM specification saved on a normalize_format job. */
+export interface NormalizationSpec {
+  feasible: boolean;
+  kind: "date" | "rules";
+  input_formats: string[];
+  output_format: string;
+  rules: { pattern: string; replacement: string }[];
+  explanation: string;
+}
+
+/** LLM specification saved on a mask_pii job. */
+export interface PiiClassification {
+  columns: { column: string; pii_types: PiiType[] }[];
+  explanation: string;
+}
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -11,13 +32,16 @@ export interface Job {
   source_key: string;
   file_type: FileType;
   target_columns: string[];
-  transform_type: string;
-  /** Plain-English description; empty when the user entered a regex directly. */
+  transform_type: TransformType;
+  /** Description of what to find, or of the target format; empty for other jobs. */
   nl_prompt: string;
   /** Applied regex. Empty until generated when the job was submitted with a description. */
   pattern: string;
+  /** The LLM's explanation of the generated pattern or specification. */
   pattern_explanation: string;
-  /** Whether the generated pattern came from the cache; null when no LLM was involved. */
+  /** Saved LLM specification for normalize_format and mask_pii jobs; null until generated. */
+  transform_spec: NormalizationSpec | PiiClassification | null;
+  /** Whether the LLM answer came from the cache; null when no LLM was involved. */
   llm_cached: boolean | null;
   replacement_value: string;
   row_count: number | null;
@@ -30,12 +54,22 @@ export interface Job {
   finished_at: string | null;
 }
 
-/** Provide exactly one of `nl_prompt` or `pattern`. */
-export type CreateRegexReplaceJob = {
+export function isNormalizationSpec(spec: Job["transform_spec"]): spec is NormalizationSpec {
+  return spec !== null && "kind" in spec;
+}
+
+interface JobTarget {
   source_key: string;
   target_columns: string[];
-  replacement_value: string;
-} & ({ nl_prompt: string; pattern?: never } | { pattern: string; nl_prompt?: never });
+}
+
+/** Find and replace takes exactly one of `nl_prompt` or `pattern`. */
+export type CreateJob =
+  | (JobTarget & { transform_type: "regex_replace"; replacement_value: string } & (
+        { nl_prompt: string; pattern?: never } | { pattern: string; nl_prompt?: never }
+      ))
+  | (JobTarget & { transform_type: "normalize_format"; nl_prompt: string })
+  | (JobTarget & { transform_type: "mask_pii" });
 
 export interface ResultRow {
   row_number: number;
@@ -52,7 +86,7 @@ export interface ResultsPage {
   total_pages: number;
 }
 
-export function createJob(payload: CreateRegexReplaceJob): Promise<Job> {
+export function createJob(payload: CreateJob): Promise<Job> {
   return apiPost("/jobs/", payload);
 }
 

@@ -1,8 +1,18 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import type { NormalizationSpec, PiiClassification } from "../../api/jobs";
 import { jsonResponse, makeJob, mockFetch, renderWithClient } from "../../test/utils";
 import { JobStatus } from "./JobStatus";
+
+const DATE_SPEC: NormalizationSpec = {
+  feasible: true,
+  kind: "date",
+  input_formats: ["yyyy-MM-dd", "dd/MM/yyyy"],
+  output_format: "yyyy-MM-dd",
+  rules: [],
+  explanation: "Writes dates as YYYY-MM-DD.",
+};
 
 describe("JobStatus", () => {
   it("shows stage and progress while running", async () => {
@@ -91,6 +101,120 @@ describe("JobStatus", () => {
 
     expect(await screen.findByText("1,200")).toBeInTheDocument();
     expect(screen.getByText(/No values matched the pattern/)).toBeInTheDocument();
+  });
+
+  it("shows a normalization job's target format, date spec and normalized rows", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          transform_type: "normalize_format",
+          status: "SUCCESS",
+          progress: 100,
+          nl_prompt: "dates as YYYY-MM-DD",
+          pattern: "",
+          replacement_value: "",
+          pattern_explanation: DATE_SPEC.explanation,
+          transform_spec: DATE_SPEC,
+          row_count: 3,
+          matched_count: 2,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("Normalize format")).toBeInTheDocument();
+    expect(screen.getByText("Target format")).toBeInTheDocument();
+    expect(screen.getByText("yyyy-MM-dd, dd/MM/yyyy")).toBeInTheDocument();
+    expect(screen.getByText("Rows normalized")).toBeInTheDocument();
+    expect(screen.queryByText("Pattern")).not.toBeInTheDocument();
+    expect(screen.queryByText("Replacement")).not.toBeInTheDocument();
+  });
+
+  it("lists rewrite rules for non-date normalization", async () => {
+    const spec: NormalizationSpec = {
+      ...DATE_SPEC,
+      kind: "rules",
+      input_formats: [],
+      output_format: "",
+      rules: [{ pattern: "^(\\d{3})\\.(\\d{4})$", replacement: "$1-$2" }],
+    };
+    mockFetch(() =>
+      jsonResponse(makeJob({ transform_type: "normalize_format", transform_spec: spec })),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("^(\\d{3})\\.(\\d{4})$")).toBeInTheDocument();
+    expect(screen.getByText("$1-$2")).toBeInTheDocument();
+  });
+
+  it("shows the spec as generating while a spec job samples the data", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          transform_type: "normalize_format",
+          status: "RUNNING",
+          stage: "GENERATING_SPEC",
+          progress: 8,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("Generating spec…")).toBeInTheDocument();
+    expect(screen.getByText("Generating…")).toBeInTheDocument();
+  });
+
+  it("lists the columns detected as personal data", async () => {
+    const spec: PiiClassification = {
+      columns: [
+        { column: "ID", pii_types: ["none"] },
+        { column: "Email", pii_types: ["email"] },
+        { column: "Notes", pii_types: ["phone", "credit_card"] },
+      ],
+      explanation: "Email and Notes contain personal data.",
+    };
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          transform_type: "mask_pii",
+          status: "SUCCESS",
+          progress: 100,
+          transform_spec: spec,
+          row_count: 5,
+          matched_count: 4,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("Mask personal data")).toBeInTheDocument();
+    const detected = screen.getAllByRole("listitem").map((item) => item.textContent);
+    expect(detected).toEqual(["Email: email", "Notes: phone, credit card"]);
+    expect(screen.getByText("Rows masked")).toBeInTheDocument();
+  });
+
+  it("explains when no personal data was found", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          transform_type: "mask_pii",
+          status: "SUCCESS",
+          progress: 100,
+          transform_spec: { columns: [{ column: "ID", pii_types: ["none"] }], explanation: "" },
+          row_count: 5,
+          matched_count: 0,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("No personal data detected")).toBeInTheDocument();
+    expect(screen.getByText(/No personal data was found/)).toBeInTheDocument();
   });
 
   it("cancels a running job", async () => {

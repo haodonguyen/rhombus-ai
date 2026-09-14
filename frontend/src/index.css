@@ -312,6 +312,44 @@ button.link {
   overflow-wrap: anywhere;
 }
 
+.transform-options {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.transform-options legend {
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.transform-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.transform-option[data-selected="true"] {
+  border-color: var(--accent);
+  background: #ddf4ff;
+}
+
+.transform-option > span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.spec-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
 .pagination {
   display: flex;
   flex-wrap: wrap;

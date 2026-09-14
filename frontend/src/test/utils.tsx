@@ -48,6 +48,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     file_type: "csv",
     target_columns: ["Email"],
     transform_type: "regex_replace",
+    transform_spec: null,
     nl_prompt: "",
     pattern: "@example\\.com",
     pattern_explanation: "",
