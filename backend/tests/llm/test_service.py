@@ -29,11 +29,11 @@ def test_identical_description_is_served_from_cache(fake_generator):
 
 
 def test_different_model_or_prompt_version_uses_a_different_key(monkeypatch):
-    base = cache_key("find emails", "claude-opus-5")
+    base = cache_key("find emails", "qwen2.5-coder:3b")
 
-    assert cache_key("find emails", "claude-sonnet-5") != base
+    assert cache_key("find emails", "llama3.2:3b") != base
     monkeypatch.setattr(llm_cache, "PROMPT_VERSION", "regex-v999")
-    assert cache_key("find emails", "claude-opus-5") != base
+    assert cache_key("find emails", "qwen2.5-coder:3b") != base
 
 
 def test_case_is_significant_in_the_cache_key():

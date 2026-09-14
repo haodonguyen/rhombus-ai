@@ -21,8 +21,8 @@ x-backend-env: &backend-env
   SPARK_SHUFFLE_PARTITIONS: ${SPARK_SHUFFLE_PARTITIONS:-8}
   SPARK_MAX_PARTITION_BYTES: ${SPARK_MAX_PARTITION_BYTES:-16m}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  LLM_MODEL: ${LLM_MODEL:-claude-opus-5}
+  LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+  LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:3b}
   LLM_CACHE_TTL: ${LLM_CACHE_TTL:-604800}
 
 services:
@@ -79,6 +79,30 @@ services:
         condition: service_healthy
     restart: "no"
 
+  ollama:
+    # Local LLM server for natural-language patterns; no API key needed.
+    image: ollama/ollama:0.34.0
+    environment:
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama-pull:
+    # One-shot: download the model into the shared volume (skipped quickly once cached).
+    image: ollama/ollama:0.34.0
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-qwen2.5-coder:3b}"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
   web:
     build:
       context: ./backend
@@ -122,6 +146,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
 
   flower:
     build:
@@ -150,3 +176,4 @@ volumes:
   postgres-data:
   minio-data:
   results:
+  ollama-data:

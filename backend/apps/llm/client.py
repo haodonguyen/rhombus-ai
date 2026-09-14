@@ -1,21 +1,21 @@
-"""Claude-backed generation of regex suggestions.
+"""Regex suggestions from a local LLM served by Ollama.
 
-The rest of the app depends on the `RegexGenerator` protocol, not on the Anthropic SDK, so
-tests substitute a fake generator and never reach the network.
+The rest of the app depends on the `RegexGenerator` protocol, not on the Ollama client, so
+tests substitute a fake generator and never reach a model server.
 """
 
 import logging
 from functools import cache
 from typing import Protocol
 
-import anthropic
+import httpx
+import ollama
 import pydantic
 from django.conf import settings
 
 from apps.llm.exceptions import (
     LLMInvalidResponse,
     LLMNotConfigured,
-    LLMRefused,
     LLMRequestFailed,
     LLMUnavailable,
 )
@@ -24,89 +24,72 @@ from apps.llm.schemas import RegexSuggestion
 
 logger = logging.getLogger(__name__)
 
-# Server-side refusal fallback: if the model declines, the API re-runs the request on
-# Anthropic's recommended fallback model within the same call.
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
-# Room for adaptive thinking; the JSON answer itself is small.
-MAX_TOKENS = 16000
+# Deterministic output: the same description should always produce the same pattern.
+GENERATION_OPTIONS = {"temperature": 0}
+# Server responses worth retrying later: overloaded, restarting or still loading the model.
+TRANSIENT_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 
 class RegexGenerator(Protocol):
     def generate(self, description: str) -> RegexSuggestion: ...
 
 
-class ClaudeRegexGenerator:
-    def __init__(self, client: anthropic.Anthropic, model: str) -> None:
+class OllamaRegexGenerator:
+    def __init__(self, client: ollama.Client, model: str) -> None:
         self.client = client
         self.model = model
 
     def generate(self, description: str) -> RegexSuggestion:
         try:
-            response = self.client.beta.messages.parse(
+            response = self.client.chat(
                 model=self.model,
-                max_tokens=MAX_TOKENS,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": build_user_message(description)}],
-                output_format=RegexSuggestion,
-                fallbacks="default",
-                betas=[FALLBACK_BETA],
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": build_user_message(description)},
+                ],
+                # Constrains decoding to JSON that matches the schema.
+                format=RegexSuggestion.model_json_schema(),
+                options=GENERATION_OPTIONS,
             )
-        # Transient failures; the SDK has already retried these a few times with backoff.
-        # 503/504/529 have their own classes and do not subclass InternalServerError.
-        except (
-            anthropic.RateLimitError,
-            anthropic.ConflictError,
-            anthropic.InternalServerError,
-            anthropic.ServiceUnavailableError,
-            anthropic.DeadlineExceededError,
-            anthropic.OverloadedError,
-            anthropic.APIConnectionError,
-        ) as exc:
-            logger.warning("Claude is temporarily unavailable: %s", exc)
+        # The client raises ConnectionError when the server is unreachable; timeouts and
+        # other transport failures surface as httpx errors.
+        except (ConnectionError, httpx.TransportError) as exc:
+            logger.warning("Ollama is unreachable: %s", exc)
             raise LLMUnavailable() from exc
-        except (
-            anthropic.AuthenticationError,
-            anthropic.PermissionDeniedError,
-            anthropic.NotFoundError,
-        ) as exc:
-            logger.error("Claude rejected the credentials or model %r: %s", self.model, exc)
-            raise LLMNotConfigured() from exc
-        except anthropic.APIStatusError as exc:
-            logger.error("Claude request failed with status %s: %s", exc.status_code, exc)
+        except ollama.ResponseError as exc:
+            if exc.status_code == 404:
+                logger.error("Ollama model %r is not available: %s", self.model, exc.error)
+                raise LLMNotConfigured(
+                    "The language model is not installed on the Ollama server. "
+                    "Enter a regex instead."
+                ) from exc
+            if exc.status_code in TRANSIENT_STATUSES:
+                logger.warning("Ollama is temporarily unavailable (%s)", exc.status_code)
+                raise LLMUnavailable() from exc
+            logger.error("Ollama request failed (%s): %s", exc.status_code, exc.error)
             raise LLMRequestFailed() from exc
-        except (pydantic.ValidationError, ValueError) as exc:
-            logger.warning("Claude output did not match the schema", exc_info=True)
+
+        if response.done_reason == "length":
+            logger.warning("Ollama output was cut off at the token limit")
+            raise LLMInvalidResponse()
+        try:
+            suggestion = RegexSuggestion.model_validate_json(response.message.content or "")
+        except pydantic.ValidationError as exc:
+            logger.warning("Ollama output did not match the schema")
             raise LLMInvalidResponse() from exc
 
-        if response.stop_reason == "refusal":
-            logger.info("Claude declined to generate a pattern (request %s)", response._request_id)
-            raise LLMRefused()
-        if response.stop_reason == "max_tokens" or response.parsed_output is None:
-            logger.warning(
-                "Claude returned no usable output (stop_reason=%s, request %s)",
-                response.stop_reason,
-                response._request_id,
-            )
-            raise LLMInvalidResponse()
-
-        logger.info(
-            "Claude generated a pattern (model %s, request %s)",
-            response.model,
-            response._request_id,
-        )
-        return response.parsed_output
+        logger.info("Ollama generated a pattern (model %s)", self.model)
+        return suggestion
 
 
 def get_regex_generator() -> RegexGenerator:
-    if not settings.ANTHROPIC_API_KEY:
+    if not settings.LLM_BASE_URL:
         raise LLMNotConfigured()
-    client = _anthropic_client(
-        settings.ANTHROPIC_API_KEY, settings.LLM_TIMEOUT_SECONDS, settings.LLM_MAX_RETRIES
-    )
-    return ClaudeRegexGenerator(client, settings.LLM_MODEL)
+    client = _ollama_client(settings.LLM_BASE_URL, settings.LLM_TIMEOUT_SECONDS)
+    return OllamaRegexGenerator(client, settings.LLM_MODEL)
 
 
 @cache
-def _anthropic_client(api_key: str, timeout: float, max_retries: int) -> anthropic.Anthropic:
+def _ollama_client(host: str, timeout: float) -> ollama.Client:
     # One client per worker process, so HTTP connections are reused across jobs.
-    return anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=max_retries)
+    return ollama.Client(host=host, timeout=timeout)

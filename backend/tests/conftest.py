@@ -15,9 +15,9 @@ TEST_BUCKET = "test-bucket"
 
 @pytest.fixture(autouse=True)
 def isolated_services(settings):
-    """Every test gets an empty in-memory cache and no LLM credentials."""
+    """Every test gets an empty in-memory cache and no LLM server."""
     settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
-    settings.ANTHROPIC_API_KEY = ""
+    settings.LLM_BASE_URL = ""
     from django.core.cache import cache
 
     cache.clear()

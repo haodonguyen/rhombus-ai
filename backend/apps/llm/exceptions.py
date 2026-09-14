@@ -23,7 +23,7 @@ class LLMNotConfigured(LLMError):
 
 
 class LLMUnavailable(LLMError):
-    """Transient: rate limits, overload or network failures. Worth retrying later."""
+    """Transient: server unreachable, overloaded or timed out. Worth retrying later."""
 
     code = "LLM_UNAVAILABLE"
     default_message = "The language model is temporarily unavailable. Please try again shortly."
@@ -33,11 +33,6 @@ class LLMUnavailable(LLMError):
 class LLMRequestFailed(LLMError):
     code = "LLM_REQUEST_FAILED"
     default_message = "The request to the language model failed."
-
-
-class LLMRefused(LLMError):
-    code = "LLM_REFUSED"
-    default_message = "The language model declined this request. Try rephrasing the description."
 
 
 class LLMInvalidResponse(LLMError):

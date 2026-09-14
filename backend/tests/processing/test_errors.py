@@ -1,4 +1,4 @@
-from apps.llm.exceptions import LLMRefused, LLMUnavailable
+from apps.llm.exceptions import LLMInvalidResponse, LLMUnavailable
 from processing.errors import (
     SourceReadError,
     SourceUnavailableError,
@@ -53,4 +53,4 @@ def test_error_text_follows_the_java_cause_chain():
 
 def test_retryable_flags():
     assert SourceUnavailableError.retryable and LLMUnavailable.retryable
-    assert not SourceReadError.retryable and not LLMRefused.retryable
+    assert not SourceReadError.retryable and not LLMInvalidResponse.retryable

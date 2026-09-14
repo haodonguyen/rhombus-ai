@@ -4,7 +4,7 @@ from django.utils import timezone
 
 from apps.jobs import tasks
 from apps.jobs.models import Job, JobStatus
-from apps.llm.exceptions import LLMRefused, LLMUnavailable
+from apps.llm.exceptions import LLMUnavailable, PatternNotExpressible
 from apps.llm.service import GeneratedPattern
 from processing.errors import SourceUnavailableError
 from processing.pipeline_stats import RunStats
@@ -111,20 +111,20 @@ def test_stored_pattern_is_reused_instead_of_calling_the_llm(make_job, spark_ok,
 
 
 def test_llm_errors_are_recorded_on_the_job(make_job, spark_ok, monkeypatch):
-    monkeypatch.setattr(tasks, "generate_pattern", fail_with(LLMRefused()))
-    job = make_job(pattern="", nl_prompt="something")
+    monkeypatch.setattr(tasks, "generate_pattern", fail_with(PatternNotExpressible()))
+    job = make_job(pattern="", nl_prompt="angry comments")
 
     run(job)
 
     assert (job.status, job.error_code, job.stage) == (
         JobStatus.FAILED,
-        "LLM_REFUSED",
+        "PATTERN_NOT_EXPRESSIBLE",
         "GENERATING_REGEX",
     )
     assert spark_ok == []
 
 
-def test_llm_not_configured_without_api_key(make_job, spark_ok):
+def test_llm_not_configured_without_server_url(make_job, spark_ok):
     job = make_job(pattern="", nl_prompt="find emails")
 
     run(job)

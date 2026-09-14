@@ -101,12 +101,13 @@ SPARK_MAX_PARTITION_BYTES = env("SPARK_MAX_PARTITION_BYTES", default="16m")
 SPARK_JARS_DIR = env("SPARK_JARS_DIR", default=None)
 
 # --- LLM ----------------------------------------------------------------------
-# Empty key disables natural-language patterns; raw regex jobs still work.
-ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
-LLM_MODEL = env("LLM_MODEL", default="claude-opus-5")
+# Local Ollama server. An empty LLM_BASE_URL disables natural-language patterns; raw
+# regex jobs still work.
+LLM_BASE_URL = env("LLM_BASE_URL", default="")
+LLM_MODEL = env("LLM_MODEL", default="qwen2.5-coder:3b")
 LLM_CACHE_TTL = env.int("LLM_CACHE_TTL", default=60 * 60 * 24 * 7)
+# Generous: the first request after startup also loads the model into memory.
 LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=120.0)
-LLM_MAX_RETRIES = env.int("LLM_MAX_RETRIES", default=2)
 
 LOGGING = {
     "version": 1,
