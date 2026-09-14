@@ -21,6 +21,9 @@ class SparkConfig:
     master: str = "local[*]"
     driver_memory: str = "2g"
     shuffle_partitions: int = 8
+    # Upper bound on bytes per input partition when reading files. Smaller partitions mean
+    # more, shorter tasks: better parallelism and finer-grained progress reporting.
+    max_partition_bytes: str = "128m"
     jars_dir: str | None = None
     s3_endpoint_url: str | None = None
     aws_access_key_id: str | None = None
@@ -33,6 +36,7 @@ def build_spark_conf(config: SparkConfig) -> dict[str, str]:
     conf = {
         "spark.driver.memory": config.driver_memory,
         "spark.sql.shuffle.partitions": str(config.shuffle_partitions),
+        "spark.sql.files.maxPartitionBytes": config.max_partition_bytes,
         "spark.sql.adaptive.enabled": "true",
         "spark.sql.adaptive.coalescePartitions.enabled": "true",
         "spark.ui.showConsoleProgress": "false",

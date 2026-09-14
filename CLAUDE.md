@@ -138,7 +138,7 @@ Rules:
   while the LLM/validator works in Python. Validate for Java compatibility
   (reject Python-only syntax like `(?P<name>...)`, `\Z`; escape `$` and `\` in
   replacement strings for Java — use `Matcher.quoteReplacement` semantics).
-- Partitioning: repartition by size (target ~128 MB/partition, or row-count based),
+- Partitioning: repartition by size (`SPARK_MAX_PARTITION_BYTES`, default 16 MiB for the local 8-core worker),
   set `spark.sql.shuffle.partitions` from cluster cores, enable AQE
   (`spark.sql.adaptive.enabled=true`). Document the choices in README.
 - Excel: Spark has no native reader. Use `com.crealytics:spark-excel` for large
@@ -216,6 +216,7 @@ docker compose exec web ruff check .      # backend lint
 docker compose exec web python manage.py shell -c "from apps.core.tasks import spark_smoke_test as t; print(t.delay().get(timeout=600))"
 cd frontend && npm run dev                # Vite dev server, proxies /api to :8000
 cd frontend && npm run lint && npm test && npm run build
+docker compose run --rm minio-seed python /scripts/generate_dataset.py --rows 3000000   # large test file
 ```
 Ports: frontend 3000, API 8000, Flower 5555 (admin:admin), MinIO 9000 / console 9001.
 
@@ -240,8 +241,4 @@ Ports: frontend 3000, API 8000, Flower 5555 (admin:admin), MinIO 9000 / console 
   error codes in one place.
 - Log with job_id in every task log line; expose task duration/row metrics.
 - Don't commit datasets, `.env`, or Spark output.
-
-## Git workflow
-
-- **Every commit, branch and pull request must follow the `/git-workflow` skill**
-  (`agent-skills:git-workflow-and-versioning`). Load it before committing or opening a PR.
+- Commits: Conventional Commits (`feat:`, `fix:`, `docs:`…), one logical change each, named paths in `git add`.

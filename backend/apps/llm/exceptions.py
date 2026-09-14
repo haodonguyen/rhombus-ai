@@ -1,13 +1,14 @@
 """Failures while turning a description into a pattern.
 
 The task layer records `code` and the message on the job, so messages must be safe to
-show to end users. Details belong in logs.
+show to end users. Details belong in logs. `retryable` errors are retried by the task.
 """
 
 
 class LLMError(Exception):
     code = "LLM_ERROR"
     default_message = "The language model could not produce a pattern."
+    retryable = False
 
     def __init__(self, message: str | None = None) -> None:
         super().__init__(message or self.default_message)
@@ -26,6 +27,7 @@ class LLMUnavailable(LLMError):
 
     code = "LLM_UNAVAILABLE"
     default_message = "The language model is temporarily unavailable. Please try again shortly."
+    retryable = True
 
 
 class LLMRequestFailed(LLMError):

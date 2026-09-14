@@ -95,6 +95,9 @@ RESULTS_PATH = env("RESULTS_PATH", default="/data/results")
 SPARK_MASTER = env("SPARK_MASTER", default="local[*]")
 SPARK_DRIVER_MEMORY = env("SPARK_DRIVER_MEMORY", default="2g")
 SPARK_SHUFFLE_PARTITIONS = env.int("SPARK_SHUFFLE_PARTITIONS", default=8)
+# 16 MiB input partitions: a 270 MiB CSV becomes ~17 tasks instead of 8 on an 8-core
+# worker, which spreads work more evenly and makes task-based progress less coarse.
+SPARK_MAX_PARTITION_BYTES = env("SPARK_MAX_PARTITION_BYTES", default="16m")
 SPARK_JARS_DIR = env("SPARK_JARS_DIR", default=None)
 
 # --- LLM ----------------------------------------------------------------------

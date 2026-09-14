@@ -38,11 +38,18 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
   - [ ] Human review before Phase 3
 
 ## Phase 3: Robustness
-- [ ] T13: Live progress (stages + SparkStatusTracker, throttled) + progress bar · S · deps T8
-- [ ] T14: Cancellation (revoke + cancelJobGroup) API + button · S · deps T13
-- [ ] T15: Retries, time limits, domain exceptions → error codes, UI error states · M · deps T12
-- [ ] T16: Excel support in pipeline (spark-excel) · S · deps T7, T15
-- [ ] **Checkpoint: Robustness** (human review)
+- [x] T13: Live progress (stages + SparkStatusTracker, throttled) + progress bar · S · deps T8
+- [x] T14: Cancellation (revoke + cancelJobGroup) API + button · S · deps T13
+- [x] T15: Retries, time limits, domain exceptions → error codes, UI error states · M · deps T12
+- [x] T16: Excel support in pipeline (spark-excel) · S · deps T7, T15
+- [ ] **Checkpoint: Robustness**
+  - [x] Tests: backend 184 (incl. real Spark job-group cancel, XLSX = CSV, corrupt XLSX) + ruff;
+        frontend 26 + lint + tsc
+  - [x] 3M-row CSV: progress 10 → 50 → 85 → 90 → 100 in 6 s; running cancel stops in 1.3 s;
+        queued cancel is immediate; finished job cancel → 409
+  - [x] Cancel button and cancelled notice verified in the browser (queued 3M-row job →
+        CANCELLED badge + notice, button removed)
+  - [ ] Human review before Phase 4
 
 ## Phase 4: Additional LLM Transformations
 - [ ] T17: Transform registry + format normalization transform · M · deps T12

@@ -30,28 +30,30 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 PHONE_FORMATS = ["+1 ({a}) {b}-{c}", "{a}-{b}-{c}", "{a}.{b}.{c}"]
 
 
+def make_row(rng: random.Random, index: int) -> list[str]:
+    """One synthetic customer row. Deterministic for a given generator state."""
+    first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
+    email = f"{first}.{last}{index}@{rng.choice(DOMAINS)}".lower()
+    if index <= len(BRIEF_ROWS):
+        _, name, email = BRIEF_ROWS[index - 1]
+    else:
+        name = f"{first} {last}"
+    month = rng.randint(1, 12)
+    date = rng.choice(DATE_FORMATS).format(
+        y=rng.randint(2018, 2025), m=month, d=rng.randint(1, 28), mon=MONTHS[month - 1]
+    )
+    phone = rng.choice(PHONE_FORMATS).format(
+        a=rng.randint(200, 999), b=rng.randint(200, 999), c=rng.randint(1000, 9999)
+    )
+    notes = rng.choice(
+        ["", "VIP customer", f"Contact backup at {email}", "Prefers phone", f"Call {phone}"]
+    )
+    return [str(index), name, email, phone, date, notes]
+
+
 def sample_rows(count: int, seed: int = 42) -> list[list[str]]:
     rng = random.Random(seed)
-    rows = []
-    for index in range(1, count + 1):
-        first, last = rng.choice(FIRST_NAMES), rng.choice(LAST_NAMES)
-        email = f"{first}.{last}{index}@{rng.choice(DOMAINS)}".lower()
-        if index <= len(BRIEF_ROWS):
-            _, name, email = BRIEF_ROWS[index - 1]
-        else:
-            name = f"{first} {last}"
-        month = rng.randint(1, 12)
-        date = rng.choice(DATE_FORMATS).format(
-            y=rng.randint(2018, 2025), m=month, d=rng.randint(1, 28), mon=MONTHS[month - 1]
-        )
-        phone = rng.choice(PHONE_FORMATS).format(
-            a=rng.randint(200, 999), b=rng.randint(200, 999), c=rng.randint(1000, 9999)
-        )
-        notes = rng.choice(
-            ["", "VIP customer", f"Contact backup at {email}", "Prefers phone", f"Call {phone}"]
-        )
-        rows.append([str(index), name, email, phone, date, notes])
-    return rows
+    return [make_row(rng, index) for index in range(1, count + 1)]
 
 
 def to_csv(rows: list[list[str]]) -> bytes:
@@ -74,6 +76,14 @@ def to_xlsx(rows: list[list[str]]) -> bytes:
     return buffer.getvalue()
 
 
+def s3_client():
+    return boto3.client(
+        "s3",
+        endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
+        region_name=os.environ.get("AWS_REGION", "us-east-1"),
+    )
+
+
 def ensure_bucket(s3, bucket: str) -> None:
     try:
         s3.head_bucket(Bucket=bucket)
@@ -84,11 +94,7 @@ def ensure_bucket(s3, bucket: str) -> None:
 
 def main() -> None:
     bucket = os.environ["S3_BUCKET"]
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=os.environ.get("S3_ENDPOINT_URL") or None,
-        region_name=os.environ.get("AWS_REGION", "us-east-1"),
-    )
+    s3 = s3_client()
     ensure_bucket(s3, bucket)
 
     rows = sample_rows(int(os.environ.get("SEED_ROWS", "1000")))

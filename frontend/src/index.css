@@ -226,11 +226,6 @@ button.link {
   background: var(--highlight);
 }
 
-.null {
-  color: var(--muted);
-  font-style: italic;
-}
-
 .job-form {
   display: grid;
   gap: 0.6rem;
@@ -260,6 +255,10 @@ button.link {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.job-status-header button {
+  margin-left: auto;
 }
 
 .badge {

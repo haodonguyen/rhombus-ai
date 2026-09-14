@@ -2,18 +2,23 @@
 and enqueues, then returns.
 """
 
+import logging
 from dataclasses import dataclass
 from uuid import UUID
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.files import services as file_services
 from apps.files.exceptions import PreviewUnavailable, StoredFileNotFound
-from apps.jobs.exceptions import InvalidJobRequest, JobNotFound, JobNotReady
-from apps.jobs.models import Job, JobStatus, TransformType
+from apps.jobs.exceptions import InvalidJobRequest, JobNotCancellable, JobNotFound, JobNotReady
+from apps.jobs.models import CANCELLED_ERROR_CODE, CANCELLED_MESSAGE, Job, JobStatus, TransformType
 from apps.jobs.results import ResultsPage, read_results_page
 from apps.jobs.tasks import run_job
+from config.celery import app as celery_app
 from processing.schema import find_missing_columns
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -40,7 +45,7 @@ def submit_regex_replace_job(request: RegexReplaceRequest) -> Job:
         pattern=request.pattern,
         replacement_value=request.replacement_value,
     )
-    # The task id is the job id, so cancellation can revoke by job id later.
+    # The task id is the job id, so cancellation can revoke by job id.
     job.celery_task_id = str(job.id)
     job.save(update_fields=["celery_task_id"])
     # Enqueue only after commit, so the worker never looks up a job that isn't saved yet.
@@ -72,6 +77,43 @@ def get_job(job_id: UUID) -> Job:
         return Job.objects.get(pk=job_id)
     except Job.DoesNotExist as exc:
         raise JobNotFound() from exc
+
+
+def cancel_job(job_id: UUID) -> Job:
+    """Cancel a job.
+
+    A queued job is failed as cancelled immediately. A running job is flagged, and the
+    worker stops its Spark work within a few seconds. Finished jobs cannot be cancelled.
+    """
+    job = get_job(job_id)
+    now = timezone.now()
+    cancelled_while_queued = Job.objects.transition(
+        job.id,
+        JobStatus.FAILED,
+        only_from=[JobStatus.QUEUED],
+        finished_at=now,
+        cancel_requested_at=now,
+        error_code=CANCELLED_ERROR_CODE,
+        error_message=CANCELLED_MESSAGE,
+    )
+    if cancelled_while_queued:
+        # The worker only starts QUEUED jobs, so it would skip this one anyway; revoking
+        # also removes the message from the queue.
+        revoke_task(job.celery_task_id)
+    elif not Job.objects.request_cancel(job.id):
+        raise JobNotCancellable()
+    job.refresh_from_db()
+    return job
+
+
+def revoke_task(task_id: str) -> None:
+    if not task_id:
+        return
+    try:
+        celery_app.control.revoke(task_id)
+    except Exception:
+        # The database already records the cancellation; a broker hiccup must not fail it.
+        logger.warning("Could not revoke Celery task %s", task_id, exc_info=True)
 
 
 def get_job_results(job_id: UUID, page: int, page_size: int) -> ResultsPage:

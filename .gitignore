@@ -16,9 +16,10 @@ node_modules/
 frontend/dist/
 *.tsbuildinfo
 
-# Data and Spark output
-data/
-results/
+# Data and Spark output. Anchored to the repo root: an unanchored `results/` also matched
+# frontend/src/features/results/ and kept the results table out of git.
+/data/
+/results/
 spark-warehouse/
 metastore_db/
 derby.log

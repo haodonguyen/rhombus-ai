@@ -1,10 +1,11 @@
 """End-to-end runs: read source -> transform -> write Parquet -> collect stats.
 
-Framework-free: callers supply the SparkSession and an optional stage callback, which the
-task layer uses to report progress.
+Framework-free: callers supply the SparkSession, an optional stage callback (used by the
+task layer to report progress) and an optional job group (used to monitor and cancel).
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -13,7 +14,13 @@ from pyspark.errors.exceptions.captured import CapturedException
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from processing.errors import SourceReadError, describe_error
+from processing.errors import (
+    SourceReadError,
+    SourceUnavailableError,
+    describe_error,
+    error_text,
+    is_transient_storage_error,
+)
 from processing.file_types import FileType
 from processing.pipeline_stats import RunStats
 from processing.readers import read_source, with_row_id
@@ -22,6 +29,8 @@ from processing.transforms.regex_replace import regex_replace
 from processing.writers import write_parquet
 
 __all__ = ["RegexReplaceSpec", "RunStats", "Stage", "run_regex_replace"]
+
+_SPARK_ERRORS = (CapturedException, Py4JJavaError)
 
 
 class Stage(StrEnum):
@@ -44,9 +53,15 @@ class RegexReplaceSpec:
 
 
 def run_regex_replace(
-    spark: SparkSession, spec: RegexReplaceSpec, on_stage: StageCallback | None = None
+    spark: SparkSession,
+    spec: RegexReplaceSpec,
+    on_stage: StageCallback | None = None,
+    job_group: str | None = None,
 ) -> RunStats:
     notify = on_stage or (lambda _stage: None)
+    if job_group:
+        # Tag every Spark job below so it can be monitored and cancelled as a unit.
+        spark.sparkContext.setJobGroup(job_group, f"regex_replace {job_group}", True)
 
     notify(Stage.LOADING)
     source = load_source(spark, spec.source_uri, spec.file_type)
@@ -54,7 +69,8 @@ def run_regex_replace(
     notify(Stage.TRANSFORMING)
     # Transform and write are a single Spark action: one pass over the data.
     transformed = regex_replace(source, spec.columns, spec.pattern, spec.replacement)
-    write_parquet(transformed, spec.output_path)
+    with _storage_outages_as_unavailable():
+        write_parquet(transformed, spec.output_path)
 
     notify(Stage.FINALIZING)
     return collect_stats(spark, spec.output_path)
@@ -63,8 +79,25 @@ def run_regex_replace(
 def load_source(spark: SparkSession, uri: str, file_type: FileType) -> DataFrame:
     try:
         return with_row_id(read_source(spark, uri, file_type))
-    except (CapturedException, Py4JJavaError) as exc:
+    except _SPARK_ERRORS as exc:
+        if is_transient_storage_error(error_text(exc)):
+            raise SourceUnavailableError(
+                f"The source file could not be reached: {describe_error(exc)}"
+            ) from exc
         raise SourceReadError(f"Could not read the source file: {describe_error(exc)}") from exc
+
+
+@contextmanager
+def _storage_outages_as_unavailable() -> Iterator[None]:
+    """Data is read lazily during the write, so storage outages can surface here too."""
+    try:
+        yield
+    except _SPARK_ERRORS as exc:
+        if is_transient_storage_error(error_text(exc)):
+            raise SourceUnavailableError(
+                f"The source file could not be reached: {describe_error(exc)}"
+            ) from exc
+        raise
 
 
 def collect_stats(spark: SparkSession, output_path: str) -> RunStats:

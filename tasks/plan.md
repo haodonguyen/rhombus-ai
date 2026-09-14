@@ -370,6 +370,55 @@ split (read in a single task) and repartition after reading.
 - [ ] Progress, cancel, retry, timeout, Excel, empty and error states all verified in the browser
 - [ ] Human review
 
+**Phase 3 implementation notes (differences from the plan above):**
+- **Progress:** `processing/progress.py` has no PySpark dependency. `ProgressTracker` keeps the
+  percentage increasing, is thread-safe, and writes to the DB at most once per second. Stage
+  ranges are GENERATING_REGEX 0–5, LOADING 5–10, TRANSFORMING 10–90 and FINALIZING 90–99.
+  `SparkJobMonitor` is a thread that sums `numCompletedTasks / numTasks` over the job group's
+  stages. It closes its own DB connection when it exits.
+- **Cancellation is cooperative:** there is no Celery `terminate`, because killing the child
+  process would orphan the Spark JVM.
+  - A queued job moves to FAILED/`CANCELLED` straight away and its task is revoked.
+  - A running job gets `cancel_requested_at`. The monitor sees it within about 1 s and calls
+    `cancelJobGroup`, and the task checks it between stages.
+  - Any failure after a cancel request is recorded as `CANCELLED`.
+  - Measured on 3M rows: a running job stopped 1.3 s after the request; a queued job never
+    started; a finished job returns 409.
+- **Retries:** errors carry a `retryable` flag, and one task path retries them with backoff at
+  about 15, 30 and 60 s. JVM errors whose cause chain shows an S3/network outage become
+  `STORAGE_UNAVAILABLE`, which is retryable. A soft time limit also cancels the job's Spark
+  work.
+- **Excel:** a corrupt XLSX fails at load and becomes `SOURCE_READ_ERROR`. XLSX and CSV give
+  identical results, which is tested.
+- **Empty CSV cells:** Spark reads unquoted empty CSV fields as `null` whatever `nullValue` or
+  `emptyValue` is set to, so the data can't be fixed on read. The results table shows nulls as
+  empty cells.
+- **Submit latency:** median 96–147 ms, cold first call about 480 ms. Most of it is the dev
+  server's baseline, since `/api/health/` alone takes about 50–65 ms, so the boto3 client is
+  not cached.
+- **Results paging:** page 30,000 of 3M rows (rows 2,999,901–3,000,000) takes about 490 ms.
+- **Dataset generator:** `scripts/generate_dataset.py` (planned for T19) was pulled forward
+  to exercise progress and cancellation on large files.
+- **Input partitioning:** progress counts completed Spark tasks, so it is only as fine as the
+  task count.
+  - Before: with Spark's default 128 MiB split, the 270 MiB CSV became 8 partitions on the
+    8-core worker. Every task finished in one wave and the bar jumped 18% → 90%.
+  - After: `SPARK_MAX_PARTITION_BYTES` is configurable, defaulting to `16m`, which gives
+    17 partitions. Measured inside the stack, 3M rows went 10 → 50 → 85 → 90 → 100 in 6 s,
+    and the job took about 10 s instead of about 26 s.
+  - T19 should confirm the value under benchmark and document it in the README.
+- **Timing caveat:** host-side timings across a Mac sleep are unreliable, because
+  `perf_counter` pauses. Measure from inside the containers or use the DB timestamps.
+- **nginx fix (found during browser testing):** the frontend's nginx resolved `web` only at
+  startup. After `web` was recreated, the UI got 502s: the log showed it still proxying to the
+  old IP `172.19.0.7`. `frontend/nginx.conf` now uses Docker's resolver (`127.0.0.11`) with a
+  variable upstream, so the name is resolved per request. T21 must revisit this for the
+  production proxy.
+- **Local environment note:** after the host slept, Docker Desktop stalled on container
+  create/start for several minutes: the frontend was left in `Created` and a `web` recreate
+  was half done. Recovery was to kill the hung compose client, run `docker start` or
+  `compose up --no-deps`, and rename the leftover container.
+
 ### Phase 4: Additional LLM Transformations
 
 #### Task 17: Transform registry and extra transform #1 (format normalization)

@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterable
 from typing import Any
 
 from django.db import models
@@ -16,6 +17,10 @@ class JobStatus(models.TextChoices):
 
 TERMINAL_STATUSES = frozenset({JobStatus.SUCCESS, JobStatus.FAILED})
 
+# Cancellation keeps the four required statuses: a cancelled job is FAILED with this code.
+CANCELLED_ERROR_CODE = "CANCELLED"
+CANCELLED_MESSAGE = "The job was cancelled."
+
 # Statuses a job may move *from* to reach each target status; anything else is rejected.
 # RUNNING -> RUNNING lets a task redelivered after a worker crash (acks_late) restart the
 # job; the run overwrites its own output, so this is safe.
@@ -31,14 +36,25 @@ class TransformType(models.TextChoices):
 
 
 class JobQuerySet(models.QuerySet):
-    def transition(self, job_id: Any, status: JobStatus, **fields: Any) -> bool:
+    def transition(
+        self,
+        job_id: Any,
+        status: JobStatus,
+        *,
+        only_from: Iterable[str] | None = None,
+        **fields: Any,
+    ) -> bool:
         """Atomically move a job to `status` and set `fields`, if the current status allows.
 
-        A single conditional UPDATE, so concurrent writers cannot race each other. Returns
-        False and changes nothing when the transition is not allowed. This is the only
-        place job status changes.
+        A single conditional UPDATE, so concurrent writers cannot race each other.
+        `only_from` narrows the allowed source statuses further. Returns False and changes
+        nothing when the transition is not allowed. This is the only place job status
+        changes.
         """
-        updated = self.filter(pk=job_id, status__in=ALLOWED_SOURCE_STATUSES[status]).update(
+        sources = ALLOWED_SOURCE_STATUSES[status]
+        if only_from is not None:
+            sources = sources & frozenset(only_from)
+        updated = self.filter(pk=job_id, status__in=sources).update(
             status=status, updated_at=timezone.now(), **fields
         )
         return updated == 1
@@ -47,6 +63,19 @@ class JobQuerySet(models.QuerySet):
         self.filter(pk=job_id, status=JobStatus.RUNNING).update(
             stage=stage, progress=progress, updated_at=timezone.now()
         )
+
+    def request_cancel(self, job_id: Any) -> bool:
+        """Flag a running job for cancellation (idempotent). True if the job is running."""
+        now = timezone.now()
+        self.filter(pk=job_id, status=JobStatus.RUNNING, cancel_requested_at__isnull=True).update(
+            cancel_requested_at=now, updated_at=now
+        )
+        return self.filter(
+            pk=job_id, status=JobStatus.RUNNING, cancel_requested_at__isnull=False
+        ).exists()
+
+    def is_cancel_requested(self, job_id: Any) -> bool:
+        return self.filter(pk=job_id, cancel_requested_at__isnull=False).exists()
 
 
 class Job(models.Model):
@@ -76,6 +105,7 @@ class Job(models.Model):
     error_code = models.CharField(max_length=64, blank=True, default="")
     error_message = models.TextField(blank=True, default="")
     celery_task_id = models.CharField(max_length=255, blank=True, default="")
+    cancel_requested_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

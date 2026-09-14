@@ -56,6 +56,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     row_count: null,
     matched_count: null,
     error: null,
+    cancel_requested: false,
     created_at: "2026-01-01T00:00:00Z",
     started_at: null,
     finished_at: null,

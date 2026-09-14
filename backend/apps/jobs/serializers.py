@@ -57,6 +57,7 @@ class RegexReplaceJobCreateSerializer(serializers.Serializer):
 
 class JobSerializer(serializers.ModelSerializer):
     error = serializers.SerializerMethodField()
+    cancel_requested = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -77,6 +78,7 @@ class JobSerializer(serializers.ModelSerializer):
             "row_count",
             "matched_count",
             "error",
+            "cancel_requested",
             "created_at",
             "started_at",
             "finished_at",
@@ -87,6 +89,9 @@ class JobSerializer(serializers.ModelSerializer):
         if not job.error_code:
             return None
         return {"code": job.error_code, "message": job.error_message}
+
+    def get_cancel_requested(self, job: Job) -> bool:
+        return job.cancel_requested_at is not None
 
 
 class ResultsQuerySerializer(serializers.Serializer):

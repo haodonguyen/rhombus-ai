@@ -1,10 +1,20 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { describeError } from "../../api/client";
+import { cancelJob } from "../../api/jobs";
 import { formatNumber, formatStage } from "../../lib/format";
 import { isTerminal } from "./polling";
-import { useJob } from "./useJob";
+import { jobQueryKey, useJob } from "./useJob";
+
+const CANCELLED_CODE = "CANCELLED";
 
 export function JobStatus({ jobId }: { jobId: string }) {
+  const queryClient = useQueryClient();
   const { data: job, error, isPending } = useJob(jobId);
+  const cancel = useMutation({
+    mutationFn: () => cancelJob(jobId),
+    onSuccess: (updated) => queryClient.setQueryData(jobQueryKey(jobId), updated),
+  });
 
   if (isPending) return <p className="muted">Loading job…</p>;
   if (!job) {
@@ -16,14 +26,26 @@ export function JobStatus({ jobId }: { jobId: string }) {
   }
 
   const finished = isTerminal(job.status);
+  const cancelled = job.error?.code === CANCELLED_CODE;
+  const cancelling = !finished && (job.cancel_requested || cancel.isPending);
 
   return (
     <div className="job-status">
       <div className="job-status-header" aria-live="polite">
         <span className="badge" data-status={job.status}>
-          {job.status}
+          {cancelled ? "CANCELLED" : job.status}
         </span>
         {!finished && job.stage && <span className="muted">{formatStage(job.stage)}…</span>}
+        {!finished && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => cancel.mutate()}
+            disabled={cancelling}
+          >
+            {cancelling ? "Cancelling…" : "Cancel job"}
+          </button>
+        )}
       </div>
 
       <div className="progress-row">
@@ -73,14 +95,22 @@ export function JobStatus({ jobId }: { jobId: string }) {
         )}
       </dl>
 
+      {cancel.isError && (
+        <div className="alert" role="alert">
+          {describeError(cancel.error)}
+        </div>
+      )}
       {job.status === "SUCCESS" && job.matched_count === 0 && (
         <p className="notice">No values matched the pattern, so the data is unchanged.</p>
       )}
-      {job.error && (
-        <div className="alert" role="alert">
-          <strong>{job.error.code}</strong> {job.error.message}
-        </div>
-      )}
+      {job.error &&
+        (cancelled ? (
+          <p className="notice">This job was cancelled.</p>
+        ) : (
+          <div className="alert" role="alert">
+            <strong>{job.error.code}</strong> {job.error.message}
+          </div>
+        ))}
       {error && !finished && (
         <p className="muted">Lost connection while refreshing status. Retrying…</p>
       )}

@@ -31,6 +31,14 @@ class JobDetailView(APIView):
         return Response(JobSerializer(services.get_job(job_id)).data)
 
 
+class JobCancelView(APIView):
+    """Cancel a queued or running job. 202: running jobs stop asynchronously."""
+
+    def post(self, request: Request, job_id: UUID) -> Response:
+        job = services.cancel_job(job_id)
+        return Response(JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
 class JobResultsView(APIView):
     def get(self, request: Request, job_id: UUID) -> Response:
         params = ResultsQuerySerializer(data=request.query_params)

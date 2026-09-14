@@ -1,4 +1,5 @@
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { jsonResponse, makeJob, mockFetch, renderWithClient } from "../../test/utils";
 import { JobStatus } from "./JobStatus";
@@ -90,5 +91,48 @@ describe("JobStatus", () => {
 
     expect(await screen.findByText("1,200")).toBeInTheDocument();
     expect(screen.getByText(/No values matched the pattern/)).toBeInTheDocument();
+  });
+
+  it("cancels a running job", async () => {
+    const running = makeJob({ status: "RUNNING", stage: "TRANSFORMING", progress: 40 });
+    const fetchMock = mockFetch((_url, init) =>
+      init?.method === "POST"
+        ? jsonResponse({ ...running, cancel_requested: true }, 202)
+        : jsonResponse(running),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel job" }));
+
+    expect(await screen.findByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    const cancelCall = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(String(cancelCall?.[0])).toContain("/api/jobs/job-1/cancel/");
+  });
+
+  it("shows a cancelled job as a notice rather than an error", async () => {
+    mockFetch(() =>
+      jsonResponse(
+        makeJob({
+          status: "FAILED",
+          error: { code: "CANCELLED", message: "The job was cancelled." },
+          cancel_requested: true,
+        }),
+      ),
+    );
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("This job was cancelled.")).toBeInTheDocument();
+    expect(screen.getByText("CANCELLED")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("offers no cancel button once the job has finished", async () => {
+    mockFetch(() => jsonResponse(makeJob({ status: "SUCCESS", progress: 100 })));
+
+    renderWithClient(<JobStatus jobId="job-1" />);
+
+    expect(await screen.findByText("SUCCESS")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
   });
 });

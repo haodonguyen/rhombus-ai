@@ -16,6 +16,11 @@ class JobNotReady(ConflictError):
     default_message = "Results are available only after the job has succeeded."
 
 
+class JobNotCancellable(ConflictError):
+    code = "JOB_NOT_CANCELLABLE"
+    default_message = "Only queued or running jobs can be cancelled."
+
+
 class ResultsUnavailable(DomainError):
     code = "RESULTS_UNAVAILABLE"
     http_status = 410

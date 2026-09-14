@@ -45,3 +45,9 @@ def test_adaptive_query_execution_enabled():
 
 def test_s3a_uri_strips_leading_slash():
     assert s3a_uri("datasets", "/samples/a.csv") == "s3a://datasets/samples/a.csv"
+
+
+def test_input_partition_size_is_configurable():
+    assert build_spark_conf(SparkConfig())["spark.sql.files.maxPartitionBytes"] == "128m"
+    conf = build_spark_conf(SparkConfig(max_partition_bytes="16m"))
+    assert conf["spark.sql.files.maxPartitionBytes"] == "16m"

@@ -1,5 +1,5 @@
-"""Celery tasks. Orchestration only: status changes, error mapping and retries. Spark work
-lives in `processing/`, LLM calls in `apps/llm/`.
+"""Celery tasks. Orchestration only: status changes, progress, cancellation, retries and
+error mapping. Spark work lives in `processing/`, LLM calls in `apps/llm/`.
 """
 
 import logging
@@ -10,31 +10,37 @@ from uuid import UUID
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
+from django.db import connection
 from django.utils import timezone
 
 from apps.core.spark import spark_config_from_settings
 from apps.files.storage import spark_uri
-from apps.jobs.models import Job, JobStatus
-from apps.llm.exceptions import LLMError, LLMUnavailable
+from apps.jobs.models import CANCELLED_ERROR_CODE, CANCELLED_MESSAGE, Job, JobStatus
+from apps.llm.exceptions import LLMError
 from apps.llm.service import generate_pattern
 from processing.errors import InvalidPatternError, ProcessingError
 from processing.file_types import FileType
+from processing.pipeline_stats import RunStats
+from processing.progress import ProgressTracker, SparkJobMonitor
 from processing.regex_safety import validate_pattern
 from processing.spark_session import get_spark_session
 
 logger = logging.getLogger(__name__)
 
-# Coarse progress reported at each stage boundary.
-STAGE_PROGRESS = {"GENERATING_REGEX": 5, "LOADING": 10, "TRANSFORMING": 30, "FINALIZING": 90}
-# Task-level retries for LLM outages, on top of the SDK's own short retries.
-LLM_MAX_TASK_RETRIES = 3
+# Task-level retries for transient failures (LLM or storage outages), on top of the client
+# libraries' own short retries.
+MAX_TRANSIENT_RETRIES = 3
+
+
+class JobCancelled(Exception):
+    """Raised between stages once the user has asked to cancel the job."""
 
 
 def result_path_for(job_id: UUID | str) -> str:
     return str(Path(settings.RESULTS_PATH) / "jobs" / str(job_id))
 
 
-def llm_retry_delay(retries_so_far: int) -> float:
+def retry_delay(retries_so_far: int) -> float:
     """Exponential backoff with jitter: roughly 15s, 30s, 60s."""
     return 15 * 2**retries_so_far + random.uniform(0, 5)
 
@@ -56,27 +62,16 @@ def run_job(self, job_id: str) -> None:
 
     job = Job.objects.get(pk=job_id)
     output_path = result_path_for(job.id)
+    progress = ProgressTracker(
+        lambda stage, percent: Job.objects.update_progress(job.id, stage=stage, progress=percent)
+    )
     try:
-        pattern = _resolve_pattern(job)
-        stats = _run_spark(job, pattern, output_path)
-    except LLMUnavailable as exc:
-        if self.request.retries < LLM_MAX_TASK_RETRIES:
-            logger.warning("Job %s: LLM unavailable, scheduling retry", job_id)
-            raise self.retry(
-                exc=exc,
-                countdown=llm_retry_delay(self.request.retries),
-                max_retries=LLM_MAX_TASK_RETRIES,
-            ) from exc
-        _fail(job_id, exc.code, str(exc))
-    except (ProcessingError, LLMError) as exc:
-        logger.info("Job %s failed: %s", job_id, exc)
-        _fail(job_id, exc.code, str(exc))
-    except SoftTimeLimitExceeded:
-        logger.warning("Job %s exceeded its time limit", job_id)
-        _fail(job_id, "TIMEOUT", "The job exceeded its time limit.")
-    except Exception:
-        logger.exception("Job %s failed unexpectedly", job_id)
-        _fail(job_id, "INTERNAL_ERROR", "An unexpected error occurred while processing the job.")
+        _raise_if_cancel_requested(job_id)
+        pattern = _resolve_pattern(job, progress)
+        _raise_if_cancel_requested(job_id)
+        stats = _run_spark(job, pattern, output_path, progress)
+    except Exception as exc:
+        _handle_failure(self, job_id, exc)
     else:
         Job.objects.transition(
             job_id,
@@ -92,7 +87,38 @@ def run_job(self, job_id: str) -> None:
         )
 
 
-def _resolve_pattern(job: Job) -> str:
+def _handle_failure(task, job_id: str, exc: Exception) -> None:
+    """Record why a job failed, or schedule a retry for transient failures."""
+    if isinstance(exc, JobCancelled) or Job.objects.is_cancel_requested(job_id):
+        # Any failure after a cancel request (typically Spark's "job group cancelled"
+        # error) is the cancellation taking effect.
+        logger.info("Job %s cancelled", job_id)
+        _fail(job_id, CANCELLED_ERROR_CODE, CANCELLED_MESSAGE)
+    elif isinstance(exc, SoftTimeLimitExceeded):
+        logger.warning("Job %s exceeded its time limit", job_id)
+        _cancel_spark_work(job_id)
+        _fail(job_id, "TIMEOUT", "The job exceeded its time limit.")
+    elif isinstance(exc, ProcessingError | LLMError):
+        if exc.retryable and task.request.retries < MAX_TRANSIENT_RETRIES:
+            logger.warning("Job %s: transient failure (%s); scheduling retry", job_id, exc.code)
+            raise task.retry(
+                exc=exc,
+                countdown=retry_delay(task.request.retries),
+                max_retries=MAX_TRANSIENT_RETRIES,
+            ) from exc
+        logger.info("Job %s failed: %s", job_id, exc)
+        _fail(job_id, exc.code, str(exc))
+    else:
+        logger.error("Job %s failed unexpectedly", job_id, exc_info=exc)
+        _fail(job_id, "INTERNAL_ERROR", "An unexpected error occurred while processing the job.")
+
+
+def _raise_if_cancel_requested(job_id: str) -> None:
+    if Job.objects.is_cancel_requested(job_id):
+        raise JobCancelled()
+
+
+def _resolve_pattern(job: Job, progress: ProgressTracker) -> str:
     """The pattern to apply: the stored one if present, otherwise generated from the
     description and saved, so a retried job never calls the LLM twice.
     """
@@ -101,9 +127,7 @@ def _resolve_pattern(job: Job) -> str:
     if not job.nl_prompt:
         raise InvalidPatternError("The job has neither a pattern nor a description.")
 
-    Job.objects.update_progress(
-        job.id, stage="GENERATING_REGEX", progress=STAGE_PROGRESS["GENERATING_REGEX"]
-    )
+    progress.enter_stage("GENERATING_REGEX")
     generated = generate_pattern(job.nl_prompt)
     Job.objects.filter(pk=job.id).update(
         pattern=generated.pattern,
@@ -113,7 +137,7 @@ def _resolve_pattern(job: Job) -> str:
     return generated.pattern
 
 
-def _run_spark(job: Job, pattern: str, output_path: str):
+def _run_spark(job: Job, pattern: str, output_path: str, progress: ProgressTracker) -> RunStats:
     # Imported lazily: PySpark exists only in the worker image, while the web process
     # imports this module to enqueue tasks.
     from processing.pipeline import RegexReplaceSpec, run_regex_replace
@@ -127,13 +151,28 @@ def _run_spark(job: Job, pattern: str, output_path: str):
         output_path=output_path,
     )
     spark = get_spark_session(spark_config_from_settings())
-    return run_regex_replace(
-        spark,
-        spec,
-        on_stage=lambda stage: Job.objects.update_progress(
-            job.id, stage=stage, progress=STAGE_PROGRESS[stage]
-        ),
+    job_group = str(job.id)
+    monitor = SparkJobMonitor(
+        spark.sparkContext,
+        job_group=job_group,
+        on_fraction=progress.update_fraction,
+        should_cancel=lambda: Job.objects.is_cancel_requested(job_group),
+        # The monitor thread uses its own database connection; close it when it stops.
+        on_thread_exit=lambda: connection.close(),
     )
+    with monitor:
+        return run_regex_replace(spark, spec, on_stage=progress.enter_stage, job_group=job_group)
+
+
+def _cancel_spark_work(job_id: str) -> None:
+    """Stop Spark jobs still running for this job, e.g. after a soft time limit."""
+    try:
+        from pyspark import SparkContext
+    except ImportError:
+        return
+    context = SparkContext._active_spark_context
+    if context is not None:
+        context.cancelJobGroup(job_id)
 
 
 def _fail(job_id: str, code: str, message: str) -> None:

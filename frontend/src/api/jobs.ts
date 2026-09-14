@@ -1,5 +1,5 @@
-import type { FileType } from "./files";
 import { apiGet, apiPost, withQuery } from "./client";
+import type { FileType } from "./files";
 
 export type JobStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED";
 
@@ -22,7 +22,9 @@ export interface Job {
   replacement_value: string;
   row_count: number | null;
   matched_count: number | null;
+  /** A cancelled job is FAILED with error code CANCELLED. */
   error: { code: string; message: string } | null;
+  cancel_requested: boolean;
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
@@ -56,6 +58,10 @@ export function createJob(payload: CreateRegexReplaceJob): Promise<Job> {
 
 export function fetchJob(jobId: string): Promise<Job> {
   return apiGet(`/jobs/${encodeURIComponent(jobId)}/`);
+}
+
+export function cancelJob(jobId: string): Promise<Job> {
+  return apiPost(`/jobs/${encodeURIComponent(jobId)}/cancel/`, {});
 }
 
 export function fetchJobResults(
