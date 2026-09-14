@@ -39,6 +39,8 @@ def build_spark_conf(config: SparkConfig) -> dict[str, str]:
         "spark.sql.files.maxPartitionBytes": config.max_partition_bytes,
         "spark.sql.adaptive.enabled": "true",
         "spark.sql.adaptive.coalescePartitions.enabled": "true",
+        # Unparseable dates become null instead of raising; format normalization relies on it.
+        "spark.sql.legacy.timeParserPolicy": "CORRECTED",
         "spark.ui.showConsoleProgress": "false",
         "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem",
     }

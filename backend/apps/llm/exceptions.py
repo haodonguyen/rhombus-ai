@@ -45,3 +45,8 @@ class LLMInvalidResponse(LLMError):
 class PatternNotExpressible(LLMError):
     code = "PATTERN_NOT_EXPRESSIBLE"
     default_message = "This description cannot be expressed as a regular expression."
+
+
+class NormalizationNotPossible(LLMError):
+    code = "NORMALIZATION_NOT_POSSIBLE"
+    default_message = "The requested format cannot be produced by reformatting the values."

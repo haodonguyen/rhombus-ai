@@ -4,16 +4,15 @@ import httpx
 import ollama
 import pytest
 
-from apps.llm.client import GENERATION_OPTIONS, OllamaRegexGenerator, get_regex_generator
+from apps.llm.client import GENERATION_OPTIONS, OllamaLLM, get_llm
 from apps.llm.exceptions import (
     LLMInvalidResponse,
     LLMNotConfigured,
     LLMRequestFailed,
     LLMUnavailable,
 )
-from apps.llm.prompts.regex import SYSTEM_PROMPT
-from apps.llm.schemas import RegexSuggestion
-from tests.llm.conftest import make_suggestion
+from apps.llm.schemas import NormalizationSuggestion, RegexSuggestion
+from tests.llm_fakes import make_date_normalization, make_suggestion
 
 MODEL = "qwen2.5-coder:3b"
 REQUEST = httpx.Request("POST", "http://ollama:11434/api/chat")
@@ -35,25 +34,33 @@ def response(content: str, done_reason: str = "stop"):
     return SimpleNamespace(done_reason=done_reason, message=SimpleNamespace(content=content))
 
 
-def generator_returning(outcome) -> tuple[OllamaRegexGenerator, FakeClient]:
+def llm_returning(outcome) -> tuple[OllamaLLM, FakeClient]:
     client = FakeClient(outcome)
-    return OllamaRegexGenerator(client, MODEL), client
+    return OllamaLLM(client, MODEL), client
 
 
-def test_returns_structured_suggestion_and_sends_expected_request():
+def test_returns_parsed_output_and_sends_expected_request():
     suggestion = make_suggestion()
-    generator, client = generator_returning(response(suggestion.model_dump_json()))
+    llm, client = llm_returning(response(suggestion.model_dump_json()))
 
-    assert generator.generate("find email addresses") == suggestion
+    assert llm.complete("system text", "user text", RegexSuggestion) == suggestion
 
     [call] = client.calls
     assert call["model"] == MODEL
     assert call["format"] == RegexSuggestion.model_json_schema()
     assert call["options"] == GENERATION_OPTIONS
     assert call["messages"] == [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": "Description: find email addresses"},
+        {"role": "system", "content": "system text"},
+        {"role": "user", "content": "user text"},
     ]
+
+
+def test_each_output_type_is_constrained_by_its_own_schema():
+    suggestion = make_date_normalization()
+    llm, client = llm_returning(response(suggestion.model_dump_json()))
+
+    assert llm.complete("s", "u", NormalizationSuggestion) == suggestion
+    assert client.calls[0]["format"] == NormalizationSuggestion.model_json_schema()
 
 
 @pytest.mark.parametrize(
@@ -66,10 +73,10 @@ def test_returns_structured_suggestion_and_sends_expected_request():
     ids=["invalid-json", "missing-fields", "truncated"],
 )
 def test_unusable_output_raises_invalid_response(outcome):
-    generator, _ = generator_returning(outcome)
+    llm, _ = llm_returning(outcome)
 
     with pytest.raises(LLMInvalidResponse):
-        generator.generate("anything")
+        llm.complete("s", "u", RegexSuggestion)
 
 
 @pytest.mark.parametrize(
@@ -84,24 +91,24 @@ def test_unusable_output_raises_invalid_response(outcome):
     ids=["unreachable", "timeout", "busy", "model-missing", "bad-request"],
 )
 def test_client_errors_map_to_domain_errors(error, expected):
-    generator, _ = generator_returning(error)
+    llm, _ = llm_returning(error)
 
     with pytest.raises(expected):
-        generator.generate("anything")
+        llm.complete("s", "u", RegexSuggestion)
 
 
 def test_factory_requires_a_server_url(settings):
     settings.LLM_BASE_URL = ""
 
     with pytest.raises(LLMNotConfigured):
-        get_regex_generator()
+        get_llm()
 
 
 def test_factory_uses_configured_server_and_model(settings):
     settings.LLM_BASE_URL = "http://ollama:11434"
     settings.LLM_MODEL = MODEL
 
-    generator = get_regex_generator()
+    llm = get_llm()
 
-    assert isinstance(generator, OllamaRegexGenerator)
-    assert generator.model == MODEL
+    assert isinstance(llm, OllamaLLM)
+    assert llm.model == MODEL

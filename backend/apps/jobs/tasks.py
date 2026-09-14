@@ -1,5 +1,6 @@
 """Celery tasks. Orchestration only: status changes, progress, cancellation, retries and
-error mapping. Spark work lives in `processing/`, LLM calls in `apps/llm/`.
+error mapping. Spark work lives in `processing/`, LLM calls in `apps/llm/`, and the Spark
+transformation for each job type in `apps/jobs/transform_builders.py`.
 """
 
 import logging
@@ -15,7 +16,14 @@ from django.utils import timezone
 
 from apps.core.spark import spark_config_from_settings
 from apps.files.storage import spark_uri
-from apps.jobs.models import CANCELLED_ERROR_CODE, CANCELLED_MESSAGE, Job, JobStatus
+from apps.jobs.cancellation import JobCancelled, raise_if_cancel_requested
+from apps.jobs.models import (
+    CANCELLED_ERROR_CODE,
+    CANCELLED_MESSAGE,
+    Job,
+    JobStatus,
+    TransformType,
+)
 from apps.llm.exceptions import LLMError
 from apps.llm.service import generate_pattern
 from processing.errors import InvalidPatternError, ProcessingError
@@ -30,10 +38,6 @@ logger = logging.getLogger(__name__)
 # Task-level retries for transient failures (LLM or storage outages), on top of the client
 # libraries' own short retries.
 MAX_TRANSIENT_RETRIES = 3
-
-
-class JobCancelled(Exception):
-    """Raised between stages once the user has asked to cancel the job."""
 
 
 def result_path_for(job_id: UUID | str) -> str:
@@ -66,9 +70,15 @@ def run_job(self, job_id: str) -> None:
         lambda stage, percent: Job.objects.update_progress(job.id, stage=stage, progress=percent)
     )
     try:
-        _raise_if_cancel_requested(job_id)
-        pattern = _resolve_pattern(job, progress)
-        _raise_if_cancel_requested(job_id)
+        raise_if_cancel_requested(job_id)
+        # Find and replace resolves its pattern before any data is read; the other
+        # transforms generate their specification from a sample, inside the Spark run.
+        pattern = (
+            _resolve_pattern(job, progress)
+            if job.transform_type == TransformType.REGEX_REPLACE
+            else None
+        )
+        raise_if_cancel_requested(job_id)
         stats = _run_spark(job, pattern, output_path, progress)
     except Exception as exc:
         _handle_failure(self, job_id, exc)
@@ -113,11 +123,6 @@ def _handle_failure(task, job_id: str, exc: Exception) -> None:
         _fail(job_id, "INTERNAL_ERROR", "An unexpected error occurred while processing the job.")
 
 
-def _raise_if_cancel_requested(job_id: str) -> None:
-    if Job.objects.is_cancel_requested(job_id):
-        raise JobCancelled()
-
-
 def _resolve_pattern(job: Job, progress: ProgressTracker) -> str:
     """The pattern to apply: the stored one if present, otherwise generated from the
     description and saved, so a retried job never calls the LLM twice.
@@ -137,19 +142,14 @@ def _resolve_pattern(job: Job, progress: ProgressTracker) -> str:
     return generated.pattern
 
 
-def _run_spark(job: Job, pattern: str, output_path: str, progress: ProgressTracker) -> RunStats:
+def _run_spark(
+    job: Job, pattern: str | None, output_path: str, progress: ProgressTracker
+) -> RunStats:
     # Imported lazily: PySpark exists only in the worker image, while the web process
     # imports this module to enqueue tasks.
-    from processing.pipeline import RegexReplaceSpec, run_regex_replace
+    from apps.jobs.transform_builders import builder_for
+    from processing.pipeline import run_transform
 
-    spec = RegexReplaceSpec(
-        source_uri=spark_uri(job.source_key),
-        file_type=FileType(job.file_type),
-        columns=tuple(job.target_columns),
-        pattern=pattern,
-        replacement=job.replacement_value,
-        output_path=output_path,
-    )
     spark = get_spark_session(spark_config_from_settings())
     job_group = str(job.id)
     monitor = SparkJobMonitor(
@@ -161,7 +161,15 @@ def _run_spark(job: Job, pattern: str, output_path: str, progress: ProgressTrack
         on_thread_exit=lambda: connection.close(),
     )
     with monitor:
-        return run_regex_replace(spark, spec, on_stage=progress.enter_stage, job_group=job_group)
+        return run_transform(
+            spark,
+            source_uri=spark_uri(job.source_key),
+            file_type=FileType(job.file_type),
+            output_path=output_path,
+            build=builder_for(job, pattern=pattern, progress=progress),
+            on_stage=progress.enter_stage,
+            job_group=job_group,
+        )
 
 
 def _cancel_spark_work(job_id: str) -> None:

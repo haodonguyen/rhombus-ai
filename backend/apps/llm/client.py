@@ -1,12 +1,12 @@
-"""Regex suggestions from a local LLM served by Ollama.
+"""Structured completions from a local LLM served by Ollama.
 
-The rest of the app depends on the `RegexGenerator` protocol, not on the Ollama client, so
-tests substitute a fake generator and never reach a model server.
+The rest of the app depends on the `StructuredLLM` protocol, not on the Ollama client, so
+tests substitute a fake and never reach a model server.
 """
 
 import logging
 from functools import cache
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 import httpx
 import ollama
@@ -19,36 +19,37 @@ from apps.llm.exceptions import (
     LLMRequestFailed,
     LLMUnavailable,
 )
-from apps.llm.prompts.regex import SYSTEM_PROMPT, build_user_message
-from apps.llm.schemas import RegexSuggestion
 
 logger = logging.getLogger(__name__)
 
-# Deterministic output: the same description should always produce the same pattern.
+ModelT = TypeVar("ModelT", bound=pydantic.BaseModel)
+
+# Deterministic output: the same inputs should always produce the same answer.
 GENERATION_OPTIONS = {"temperature": 0}
 # Server responses worth retrying later: overloaded, restarting or still loading the model.
 TRANSIENT_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 
-class RegexGenerator(Protocol):
-    def generate(self, description: str) -> RegexSuggestion: ...
+class StructuredLLM(Protocol):
+    def complete(self, system: str, user: str, output_type: type[ModelT]) -> ModelT: ...
 
 
-class OllamaRegexGenerator:
+class OllamaLLM:
     def __init__(self, client: ollama.Client, model: str) -> None:
         self.client = client
         self.model = model
 
-    def generate(self, description: str) -> RegexSuggestion:
+    def complete(self, system: str, user: str, output_type: type[ModelT]) -> ModelT:
+        """Ask for a JSON answer constrained to `output_type`'s schema and parse it."""
         try:
             response = self.client.chat(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": build_user_message(description)},
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
                 ],
                 # Constrains decoding to JSON that matches the schema.
-                format=RegexSuggestion.model_json_schema(),
+                format=output_type.model_json_schema(),
                 options=GENERATION_OPTIONS,
             )
         # The client raises ConnectionError when the server is unreachable; timeouts and
@@ -73,20 +74,20 @@ class OllamaRegexGenerator:
             logger.warning("Ollama output was cut off at the token limit")
             raise LLMInvalidResponse()
         try:
-            suggestion = RegexSuggestion.model_validate_json(response.message.content or "")
+            parsed = output_type.model_validate_json(response.message.content or "")
         except pydantic.ValidationError as exc:
-            logger.warning("Ollama output did not match the schema")
+            logger.warning("Ollama output did not match the %s schema", output_type.__name__)
             raise LLMInvalidResponse() from exc
 
-        logger.info("Ollama generated a pattern (model %s)", self.model)
-        return suggestion
+        logger.info("Ollama produced a %s (model %s)", output_type.__name__, self.model)
+        return parsed
 
 
-def get_regex_generator() -> RegexGenerator:
+def get_llm() -> StructuredLLM:
     if not settings.LLM_BASE_URL:
         raise LLMNotConfigured()
     client = _ollama_client(settings.LLM_BASE_URL, settings.LLM_TIMEOUT_SECONDS)
-    return OllamaRegexGenerator(client, settings.LLM_MODEL)
+    return OllamaLLM(client, settings.LLM_MODEL)
 
 
 @cache

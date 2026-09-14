@@ -32,7 +32,9 @@ ALLOWED_SOURCE_STATUSES: dict[str, frozenset[str]] = {
 
 
 class TransformType(models.TextChoices):
-    REGEX_REPLACE = "regex_replace", "Regex replace"
+    REGEX_REPLACE = "regex_replace", "Find and replace"
+    NORMALIZE_FORMAT = "normalize_format", "Normalize format"
+    MASK_PII = "mask_pii", "Mask personal data"
 
 
 class JobQuerySet(models.QuerySet):
@@ -92,10 +94,14 @@ class Job(models.Model):
     transform_type = models.CharField(
         max_length=32, choices=TransformType.choices, default=TransformType.REGEX_REPLACE
     )
-    # Either the user supplies `pattern` directly, or `nl_prompt` and the task generates it.
+    # Find and replace: the user supplies `pattern`, or `nl_prompt` and the task generates
+    # it. Format normalization: `nl_prompt` describes the target format.
     nl_prompt = models.TextField(blank=True, default="")
     pattern = models.TextField(blank=True, default="")
+    # The LLM's explanation of the generated pattern or specification.
     pattern_explanation = models.TextField(blank=True, default="")
+    # The LLM specification for normalization and PII masking, saved so retries reuse it.
+    transform_spec = models.JSONField(null=True, blank=True)
     llm_cached = models.BooleanField(null=True, blank=True)
     replacement_value = models.TextField(blank=True, default="")
 

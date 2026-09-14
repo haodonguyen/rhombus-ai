@@ -2,13 +2,23 @@ from typing import Any
 
 from rest_framework import serializers
 
-from apps.jobs.models import Job
+from apps.jobs.models import Job, TransformType
 from processing.errors import InvalidPatternError
 from processing.file_types import FileType
 from processing.regex_safety import MAX_PATTERN_LENGTH, check_syntax
 
 
-class RegexReplaceJobCreateSerializer(serializers.Serializer):
+class JobCreateSerializer(serializers.Serializer):
+    """A job submission. Which of the optional fields apply depends on `transform_type`:
+
+    - regex_replace: exactly one of `nl_prompt` or `pattern`, plus `replacement_value`.
+    - normalize_format: `nl_prompt` describing the target format.
+    - mask_pii: nothing else; the LLM classifies the target columns from sample values.
+    """
+
+    transform_type = serializers.ChoiceField(
+        choices=TransformType.choices, required=False, default=TransformType.REGEX_REPLACE
+    )
     source_key = serializers.CharField(max_length=1024)
     target_columns = serializers.ListField(
         child=serializers.CharField(max_length=255, trim_whitespace=False),
@@ -45,13 +55,36 @@ class RegexReplaceJobCreateSerializer(serializers.Serializer):
         return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        if bool(attrs["nl_prompt"]) == bool(attrs["pattern"]):
-            message = (
-                "Provide either a description or a regex, not both."
-                if attrs["nl_prompt"]
-                else "Describe what to find, or enter a regex."
+        transform = attrs["transform_type"]
+        has_prompt = bool(attrs["nl_prompt"])
+        has_pattern = bool(attrs["pattern"])
+        has_replacement = bool(attrs["replacement_value"])
+
+        if transform == TransformType.REGEX_REPLACE:
+            if has_prompt == has_pattern:
+                message = (
+                    "Provide either a description or a regex, not both."
+                    if has_prompt
+                    else "Describe what to find, or enter a regex."
+                )
+                raise serializers.ValidationError({"nl_prompt": [message]})
+        elif transform == TransformType.NORMALIZE_FORMAT:
+            if has_pattern or has_replacement:
+                raise serializers.ValidationError(
+                    {"pattern": ["Only find-and-replace jobs take a regex or replacement value."]}
+                )
+            if not has_prompt:
+                raise serializers.ValidationError(
+                    {"nl_prompt": ["Describe the target format, for example dates as YYYY-MM-DD."]}
+                )
+        elif has_prompt or has_pattern or has_replacement:
+            raise serializers.ValidationError(
+                {
+                    "transform_type": [
+                        "Masking personal data takes no description, regex or replacement value."
+                    ]
+                }
             )
-            raise serializers.ValidationError({"nl_prompt": [message]})
         return attrs
 
 
@@ -73,6 +106,7 @@ class JobSerializer(serializers.ModelSerializer):
             "nl_prompt",
             "pattern",
             "pattern_explanation",
+            "transform_spec",
             "llm_cached",
             "replacement_value",
             "row_count",

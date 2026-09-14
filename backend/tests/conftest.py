@@ -48,6 +48,18 @@ def make_job(db):
 
 
 @pytest.fixture
+def fake_llm(monkeypatch):
+    """Replace the LLM with a fake. Set its answers with `respond_with`."""
+    from apps.llm import service
+    from tests.llm_fakes import FakeLLM, make_suggestion
+
+    llm = FakeLLM()
+    llm.respond_with(make_suggestion())
+    monkeypatch.setattr(service, "get_llm", lambda: llm)
+    return llm
+
+
+@pytest.fixture
 def s3(settings):
     """An in-memory S3 (moto) with an empty bucket, wired into Django settings."""
     settings.S3_ENDPOINT_URL = None

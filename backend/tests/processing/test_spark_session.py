@@ -51,3 +51,7 @@ def test_input_partition_size_is_configurable():
     assert build_spark_conf(SparkConfig())["spark.sql.files.maxPartitionBytes"] == "128m"
     conf = build_spark_conf(SparkConfig(max_partition_bytes="16m"))
     assert conf["spark.sql.files.maxPartitionBytes"] == "16m"
+
+
+def test_unparseable_dates_become_null_rather_than_failing():
+    assert build_spark_conf(SparkConfig())["spark.sql.legacy.timeParserPolicy"] == "CORRECTED"

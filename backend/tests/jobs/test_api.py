@@ -202,3 +202,67 @@ def test_results_missing_output_returns_410(api_client, make_job, tmp_path):
 
     assert response.status_code == 410
     assert response.json()["error"]["code"] == "RESULTS_UNAVAILABLE"
+
+
+# --- other transforms -----------------------------------------------------------------
+
+
+def target(**overrides):
+    return {"source_key": "samples/people.csv", "target_columns": ["Name", "Email"], **overrides}
+
+
+def test_submit_normalize_job(api_client, people_csv, enqueue, django_capture_on_commit_callbacks):
+    body = target(transform_type="normalize_format", nl_prompt="lower-case emails")
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post("/api/jobs/", body, format="json")
+
+    assert response.status_code == 202
+    job = response.json()
+    assert (job["transform_type"], job["nl_prompt"], job["pattern"], job["transform_spec"]) == (
+        "normalize_format",
+        "lower-case emails",
+        "",
+        None,
+    )
+    enqueue.apply_async.assert_called_once()
+
+
+def test_normalize_job_requires_a_target_format(api_client, people_csv, enqueue):
+    response = api_client.post(
+        "/api/jobs/", target(transform_type="normalize_format"), format="json"
+    )
+
+    assert response.status_code == 400
+    assert "Describe the target format" in response.json()["error"]["details"]["nl_prompt"][0]
+
+
+def test_normalize_job_rejects_a_regex_or_replacement(api_client, people_csv, enqueue):
+    response = api_client.post(
+        "/api/jobs/", payload(transform_type="normalize_format", nl_prompt="ISO"), format="json"
+    )
+
+    assert response.status_code == 400
+    assert "pattern" in response.json()["error"]["details"]
+
+
+def test_submit_mask_pii_job(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", target(transform_type="mask_pii"), format="json")
+
+    assert response.status_code == 202
+    assert response.json()["transform_type"] == "mask_pii"
+
+
+def test_mask_pii_job_takes_no_description(api_client, people_csv, enqueue):
+    response = api_client.post(
+        "/api/jobs/", target(transform_type="mask_pii", nl_prompt="emails"), format="json"
+    )
+
+    assert response.status_code == 400
+    assert "transform_type" in response.json()["error"]["details"]
+
+
+def test_unknown_transform_type_is_rejected(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", target(transform_type="translate"), format="json")
+
+    assert response.status_code == 400
+    assert "transform_type" in response.json()["error"]["details"]

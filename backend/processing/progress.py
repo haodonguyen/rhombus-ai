@@ -12,10 +12,12 @@ from collections.abc import Callable, Iterable
 logger = logging.getLogger(__name__)
 
 # Overall percentage range for each stage. TRANSFORMING is the pass over the data, so it
-# gets most of the bar; 100 is reserved for success.
+# gets most of the bar; 100 is reserved for success. GENERATING_REGEX runs before the data
+# is read (find and replace); GENERATING_SPEC runs after sampling it (other transforms).
 STAGE_RANGES: dict[str, tuple[int, int]] = {
     "GENERATING_REGEX": (0, 5),
-    "LOADING": (5, 10),
+    "LOADING": (5, 8),
+    "GENERATING_SPEC": (8, 10),
     "TRANSFORMING": (10, 90),
     "FINALIZING": (90, 99),
 }

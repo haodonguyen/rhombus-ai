@@ -35,6 +35,10 @@ class InvalidPatternError(ProcessingError):
     code = "INVALID_PATTERN"
 
 
+class InvalidSpecError(ProcessingError):
+    code = "INVALID_SPEC"
+
+
 # Text found in JVM errors when the storage endpoint was unreachable, as opposed to the
 # data or path being wrong.
 _TRANSIENT_STORAGE_MARKERS = (

@@ -1,4 +1,4 @@
-"""Redis cache of validated suggestions, so an identical description reaches the LLM once.
+"""Redis cache of validated LLM suggestions, so identical inputs reach the model once.
 
 The cache is an optimisation: if Redis is unreachable, lookups miss and writes are skipped
 rather than failing the job.
@@ -6,45 +6,46 @@ rather than failing the job.
 
 import hashlib
 import logging
+from typing import TypeVar
 
 import pydantic
 import redis
 from django.conf import settings
 from django.core.cache import cache
 
-from apps.llm.prompts.regex import PROMPT_VERSION
-from apps.llm.schemas import RegexSuggestion
-
 logger = logging.getLogger(__name__)
+
+ModelT = TypeVar("ModelT", bound=pydantic.BaseModel)
 
 
 def normalize_description(description: str) -> str:
-    """Collapse whitespace. Case is kept: it can matter to the pattern the user wants."""
+    """Collapse whitespace. Case is kept: it can matter to the answer the user wants."""
     return " ".join(description.split())
 
 
-def cache_key(description: str, model: str) -> str:
-    material = "\x1f".join([PROMPT_VERSION, model, normalize_description(description)])
-    return f"llm:regex:{hashlib.sha256(material.encode()).hexdigest()}"
+def cache_key(namespace: str, *parts: str) -> str:
+    """A key over every input that shapes the answer: prompt version, model, user inputs."""
+    material = "\x1f".join(parts)
+    return f"llm:{namespace}:{hashlib.sha256(material.encode()).hexdigest()}"
 
 
-def get_cached_suggestion(key: str) -> RegexSuggestion | None:
+def get_cached(key: str, output_type: type[ModelT]) -> ModelT | None:
     try:
         data = cache.get(key)
     except redis.RedisError:
-        logger.warning("Regex cache lookup failed; continuing without cache", exc_info=True)
+        logger.warning("LLM cache lookup failed; continuing without cache", exc_info=True)
         return None
     if data is None:
         return None
     try:
-        return RegexSuggestion.model_validate(data)
+        return output_type.model_validate(data)
     except pydantic.ValidationError:
-        logger.warning("Ignoring malformed regex cache entry %s", key)
+        logger.warning("Ignoring malformed LLM cache entry %s", key)
         return None
 
 
-def store_suggestion(key: str, suggestion: RegexSuggestion) -> None:
+def store(key: str, suggestion: pydantic.BaseModel) -> None:
     try:
         cache.set(key, suggestion.model_dump(), timeout=settings.LLM_CACHE_TTL)
     except redis.RedisError:
-        logger.warning("Regex cache write failed; continuing without cache", exc_info=True)
+        logger.warning("LLM cache write failed; continuing without cache", exc_info=True)

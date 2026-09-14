@@ -7,8 +7,8 @@ from rest_framework.views import APIView
 
 from apps.jobs import services
 from apps.jobs.serializers import (
+    JobCreateSerializer,
     JobSerializer,
-    RegexReplaceJobCreateSerializer,
     ResultsPageSerializer,
     ResultsQuerySerializer,
 )
@@ -18,11 +18,9 @@ class JobCreateView(APIView):
     """Submit a job. Returns 202 immediately; the work runs in a Celery worker."""
 
     def post(self, request: Request) -> Response:
-        serializer = RegexReplaceJobCreateSerializer(data=request.data)
+        serializer = JobCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        job = services.submit_regex_replace_job(
-            services.RegexReplaceRequest(**serializer.validated_data)
-        )
+        job = services.submit_job(services.JobRequest(**serializer.validated_data))
         return Response(JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 

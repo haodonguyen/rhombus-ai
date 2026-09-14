@@ -249,3 +249,16 @@ def test_result_path_is_scoped_to_the_job(settings):
     settings.RESULTS_PATH = "/data/results"
 
     assert tasks.result_path_for("abc") == "/data/results/jobs/abc"
+
+
+@pytest.mark.parametrize("transform_type", ["normalize_format", "mask_pii"])
+def test_spec_transforms_do_not_resolve_a_regex(make_job, spark_ok, monkeypatch, transform_type):
+    monkeypatch.setattr(tasks, "generate_pattern", fail_with(AssertionError("must not call")))
+    job = make_job(
+        transform_type=transform_type, pattern="", replacement_value="", nl_prompt="ISO dates"
+    )
+
+    run(job)
+
+    assert job.status == JobStatus.SUCCESS
+    assert spark_ok == [None]
