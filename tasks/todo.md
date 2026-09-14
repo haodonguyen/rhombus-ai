@@ -30,11 +30,11 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
 - [x] T11: Regex validator (Java compat, ReDoS, empty match, timeout) · S · deps none
 - [x] T12: NL → regex LLM service + Redis cache, wired into task and UI · M · deps T8, T11
 - [ ] **Checkpoint: LLM**
-  - [x] Tests pass offline with a mocked Claude client: backend 153 + ruff; frontend 23 + lint + tsc
+  - [x] Tests pass offline with a mocked LLM client: backend 153 + ruff; frontend 23 + lint + tsc
   - [x] Without a key, description jobs fail as LLM_NOT_CONFIGURED; raw regex jobs still succeed;
         unsafe raw regex is rejected in the worker as INVALID_PATTERN
-  - [ ] Live Claude run: description → regex → Spark in the browser, repeat hits the cache
-        (needs `ANTHROPIC_API_KEY` in `.env`)
+  - [x] Live run with local Ollama via the API: description → regex → Spark, and a repeated
+        description is served from the cache (0.9 s job); the browser check is still to do
   - [ ] Human review before Phase 3
 
 ## Phase 3: Robustness
@@ -67,7 +67,7 @@ Details, acceptance criteria and verification for each task are in `tasks/plan.m
 - [ ] **Checkpoint: Complete** (CLAUDE.md deliverables checklist all ticked)
 
 ## Open Questions (answer before T12 / T21)
-- [ ] LLM provider
+- [x] LLM provider: local Ollama in docker-compose (no API key)
 - [ ] Deployment target
 - [ ] Production S3 bucket + credentials
 - [ ] Confirm the two extra transforms

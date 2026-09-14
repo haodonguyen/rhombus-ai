@@ -294,10 +294,11 @@ whether it came from cache.
   `regex` module's `timeout=`.
 - **Validator limitation:** Python's parser merges single-character alternations (`(\d|\w)+` →
   `[\d\w]+`), so those overlaps go undetected. The prompt steers the model to character classes.
-- **Claude call:** `anthropic` 1.5 `client.beta.messages.parse` with a Pydantic `RegexSuggestion`
-  (`feasible`, `pattern`, three flag booleans, `explanation`) on `claude-opus-5`, using default
-  adaptive thinking. `fallbacks: "default"` is enabled (beta `server-side-fallback-2026-07-01`), and a
-  final `refusal` stop reason becomes `LLM_REFUSED`.
+- **LLM call (superseded 2026-09-14):** this was originally Claude (`claude-opus-5`) via
+  `anthropic` `beta.messages.parse`. It was replaced by a local Ollama model, because the user
+  does not want an API key. `OllamaRegexGenerator` passes the same Pydantic `RegexSuggestion`
+  schema (`feasible`, `pattern`, three flag booleans, `explanation`) as Ollama's `format`, with
+  temperature 0. There is no refusal path, so `LLM_REFUSED` was removed.
 - **Task wiring:** the LLM call happens in the Celery task as stage `GENERATING_REGEX`. The generated
   pattern is saved on the job, so a retried or redelivered task never calls the LLM again.
 - **Retries:** transient API errors (429, 409, 5xx, 529, connection) get the SDK's short retries,
@@ -308,8 +309,23 @@ whether it came from cache.
   read. If Redis is down the cache is skipped instead of failing the job.
 - **Raw regex option:** kept as an alternative ("Enter a regex instead"). The API requires exactly
   one of `nl_prompt` or `pattern`.
-- **No API key:** `ANTHROPIC_API_KEY` unset means description jobs fail with `LLM_NOT_CONFIGURED`,
-  which is verified end to end.
+- **No LLM server:** an empty `LLM_BASE_URL` (or a model missing on the server) means description
+  jobs fail with `LLM_NOT_CONFIGURED`, while an unreachable or busy server is retried as
+  `LLM_UNAVAILABLE`. This is verified end to end.
+- **Local model (2026-09-14):** `qwen2.5-coder:3b` (1.9 GB) runs on `ollama/ollama:0.34.0`. A one-shot
+  `ollama-pull` service downloads it, and the worker waits for that to finish.
+  - Quality check over 11 phrasings: 10 pass.
+    - Passing: emails in three phrasings (including the brief's sentence), phone numbers, dates,
+      URLs, zip codes, a case-insensitive word, IPv4, and an inexpressible description correctly
+      marked infeasible.
+    - Miss: card numbers written with spaces (the generated pattern only allowed dashes).
+  - Latency on the 8-core CPU VM: 3–7 s per generation; the first call after start also loads the
+    model (about 11 s).
+  - End to end:
+    - "find email addresses" on the sample CSV → SUCCESS in 18 s (1000/1000 matched).
+    - The same description with extra spaces → cache hit; the whole job took 0.9 s.
+    - Cached description on the 3M-row file → 7.6 s.
+    - "names of angry customers" → `PATTERN_NOT_EXPRESSIBLE` with the model's reason.
 
 ### Phase 3: Robustness
 
@@ -539,7 +555,8 @@ running to completion and embed it.
 
 ## Open Questions
 
-1. **LLM provider:** Claude (Anthropic API), or another provider or key you already have?
+1. **LLM provider:** answered. The first choice was Claude; it was switched on 2026-09-14 to a
+   local Ollama model in docker-compose, with no API key.
 2. **Deployment target:** a single VM (e.g. AWS EC2/Lightsail) running docker-compose, or something else?
 3. **S3:** do you have an AWS bucket and credentials for production, or should the deployment also use MinIO?
 4. **Extra transforms:** are format normalization + PII masking OK, or do you prefer others (e.g. value categorization)?

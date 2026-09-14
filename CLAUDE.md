@@ -23,7 +23,7 @@ well-named modules over clever code.
 | Data engine           | PySpark (DataFrame API, never row-by-row Python)    |
 | Ingestion             | Amazon S3 → Spark DataFrame (`s3a://`), boto3 for listing |
 | Frontend              | React (Vite + TypeScript)                           |
-| LLM                   | Claude (`claude-opus-5`) via the `anthropic` SDK, behind an interface; cached in Redis |
+| LLM                   | Local Ollama (`qwen2.5-coder:3b`) in docker-compose, behind an interface; no API key; cached in Redis |
 | Observability         | Flower + structured logs + task metrics             |
 | Local stack           | docker-compose, single command; MinIO/LocalStack for S3 in dev |
 
@@ -47,7 +47,7 @@ backend/
   apps/
     files/                # S3 browsing API: list files, preview schema/columns
     jobs/                 # Job model, serializers, views, urls, tasks.py
-    llm/                  # Claude client, prompts, Redis cache (validator: processing/regex_safety.py)
+    llm/                  # Ollama client, prompts, Redis cache (validator: processing/regex_safety.py)
   processing/             # PURE data layer — no Django imports
     spark_session.py      # SparkSession factory (S3A config, tuning)
     readers.py            # CSV / Excel → DataFrame
@@ -196,7 +196,7 @@ All settings via environment variables (`.env.example` committed, `.env` ignored
 `DJANGO_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL`, `CELERY_BROKER_URL`,
 `CELERY_RESULT_BACKEND`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 `AWS_REGION`, `S3_BUCKET`, `S3_ENDPOINT_URL` (MinIO in dev), `RESULTS_PATH`,
-`ANTHROPIC_API_KEY`, `LLM_MODEL`, `LLM_CACHE_TTL`, `SPARK_MASTER`, `SPARK_DRIVER_MEMORY`.
+`LLM_BASE_URL`, `LLM_MODEL`, `LLM_CACHE_TTL`, `SPARK_MASTER`, `SPARK_DRIVER_MEMORY`.
 
 Use separate Redis DB numbers for broker, result backend and cache.
 
@@ -204,7 +204,7 @@ Use separate Redis DB numbers for broker, result backend and cache.
 
 `web` (Django/gunicorn), `worker` (Celery + PySpark, Java runtime), `redis`,
 `postgres`, `flower`, `frontend` (built static via nginx), `minio` + a one-shot
-bucket seeding job for dev. Optional: `spark-master`/`spark-worker` to show
+bucket seeding job for dev, `ollama` + a one-shot model pull. Optional: `spark-master`/`spark-worker` to show
 distributed mode. Add healthchecks and `depends_on: condition: service_healthy`.
 
 ## Commands
