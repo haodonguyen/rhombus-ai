@@ -40,14 +40,22 @@ PROBE_LENGTH = 1024
 PROBE_TIMEOUT_SECONDS = 0.1
 MAX_PROBE_CHARACTERS = 6
 
+# An unescaped "(": not preceded by a backslash, other than backslashes that escape each
+# other. Without this, a literal "\(" followed by an optional group, as in "\(?(\d{3})",
+# reads like a conditional group.
+_GROUP_OPEN = r"(?<!\\)(?:\\\\)*\("
+
 _JAVA_INCOMPATIBLE = [
-    (re.compile(r"\(\?P[<=>]"), "Python-style named groups (?P<name>...) are not supported."),
     (
-        re.compile(r"\(\?<(?![=!])"),
+        re.compile(_GROUP_OPEN + r"\?P[<=>]"),
+        "Python-style named groups (?P<name>...) are not supported.",
+    ),
+    (
+        re.compile(_GROUP_OPEN + r"\?<(?![=!])"),
         "Named groups are not supported; use a non-capturing group (?:...) instead.",
     ),
-    (re.compile(r"\(\?\("), "Conditional groups (?(...)...) are not supported."),
-    (re.compile(r"\(\?#"), "Inline comments (?#...) are not supported."),
+    (re.compile(_GROUP_OPEN + r"\?\("), "Conditional groups (?(...)...) are not supported."),
+    (re.compile(_GROUP_OPEN + r"\?#"), "Inline comments (?#...) are not supported."),
 ]
 
 _REPEATS = (sre.MAX_REPEAT, sre.MIN_REPEAT)

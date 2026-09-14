@@ -61,6 +61,24 @@ def test_lookbehind_is_not_mistaken_for_a_named_group():
     check_syntax(r"(?<!-)\d+")
 
 
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        r"^\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})$",
+        r"\(?#\d+\)?",
+        r"\\\(?(\d+)",
+    ],
+    ids=["optional-paren-then-group", "optional-paren-then-hash", "escaped-backslash-and-paren"],
+)
+def test_escaped_parentheses_are_not_mistaken_for_special_groups(pattern):
+    check_syntax(pattern)
+
+
+def test_group_after_an_escaped_backslash_is_still_checked():
+    with pytest.raises(InvalidPatternError, match="Conditional groups"):
+        check_syntax(r"\\(?(1)a|b)")
+
+
 def test_check_syntax_does_not_run_structural_checks():
     check_syntax(r"(a+)+b")  # cheap request-time check only; validate_pattern rejects it
 
