@@ -42,7 +42,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Docker Compose brings up the whole stack with one command | `docker compose up --build` |
 | Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
-| Tests for the task and Spark layers | 247 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
+| Tests for the task and Spark layers | 249 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
 | Public deployment | Not deployed. Single-server steps and a production override are provided. See [Deployment](#deployment). |
 | Demo video | To be added at the top of this README |
 
@@ -245,7 +245,7 @@ All settings come from environment variables; see [`.env.example`](.env.example)
 ## Testing
 
 ```bash
-docker compose exec worker pytest        # full backend suite, including Spark tests (247 tests)
+docker compose exec worker pytest        # full backend suite, including Spark tests (249 tests)
 docker compose exec web ruff check .     # backend lint
 cd frontend && npm install && npm run lint && npm test && npm run build   # 33 tests
 ```
