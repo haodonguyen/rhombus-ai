@@ -83,7 +83,9 @@ services:
     # Local LLM server for natural-language patterns; no API key needed.
     image: ollama/ollama:0.34.0
     environment:
-      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
+      # Keep the model in memory: the first request after a load runs at under 1 token/s on
+      # CPU, far slower than warm requests (about 25 tokens/s).
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-24h}
     volumes:
       - ollama-data:/root/.ollama
     healthcheck:
@@ -93,11 +95,19 @@ services:
       retries: 12
 
   ollama-pull:
-    # One-shot: download the model into the shared volume (skipped quickly once cached).
+    # One-shot: download the model into the shared volume (quick once cached), then try to load
+    # it with a tiny request so the first real job skips the slow cold start. The warm-up is
+    # best effort: if it times out, the worker still starts and the first job loads the model.
     image: ollama/ollama:0.34.0
-    entrypoint: ["ollama", "pull", "${LLM_MODEL:-qwen2.5-coder:3b}"]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        ollama pull "$$LLM_MODEL" &&
+        { ollama run "$$LLM_MODEL" "Reply with OK." > /dev/null || echo "warm-up skipped"; }
     environment:
       OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:3b}
     depends_on:
       ollama:
         condition: service_healthy

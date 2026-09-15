@@ -106,8 +106,9 @@ SPARK_JARS_DIR = env("SPARK_JARS_DIR", default=None)
 LLM_BASE_URL = env("LLM_BASE_URL", default="")
 LLM_MODEL = env("LLM_MODEL", default="qwen2.5-coder:3b")
 LLM_CACHE_TTL = env.int("LLM_CACHE_TTL", default=60 * 60 * 24 * 7)
-# Generous: the first request after startup also loads the model into memory.
-LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=120.0)
+# Generous: a request that finds the model unloaded runs slowly while it loads (measured
+# 135 s on an 8-core CPU), and timing it out would only restart the load on retry.
+LLM_TIMEOUT_SECONDS = env.float("LLM_TIMEOUT_SECONDS", default=300.0)
 
 LOGGING = {
     "version": 1,
