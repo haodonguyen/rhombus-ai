@@ -14,14 +14,16 @@ x-backend-env: &backend-env
   AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
   AWS_REGION: ${AWS_REGION:-us-east-1}
   S3_BUCKET: ${S3_BUCKET:-datasets}
-  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:-http://minio:9000}
+  # `-` rather than `:-` for the next two: an empty value in .env is kept, so an empty
+  # S3_ENDPOINT_URL reads from AWS S3 and an empty LLM_BASE_URL disables the LLM.
+  S3_ENDPOINT_URL: ${S3_ENDPOINT_URL-http://minio:9000}
   RESULTS_PATH: /data/results
   SPARK_MASTER: ${SPARK_MASTER:-local[*]}
   SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-2g}
   SPARK_SHUFFLE_PARTITIONS: ${SPARK_SHUFFLE_PARTITIONS:-8}
   SPARK_MAX_PARTITION_BYTES: ${SPARK_MAX_PARTITION_BYTES:-16m}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
-  LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+  LLM_BASE_URL: ${LLM_BASE_URL-http://ollama:11434}
   LLM_MODEL: ${LLM_MODEL:-qwen2.5-coder:3b}
   LLM_CACHE_TTL: ${LLM_CACHE_TTL:-604800}
 
@@ -95,15 +97,16 @@ services:
       retries: 12
 
   ollama-pull:
-    # One-shot: download the model into the shared volume (quick once cached), then try to load
-    # it with a tiny request so the first real job skips the slow cold start. The warm-up is
-    # best effort: if it times out, the worker still starts and the first job loads the model.
+    # One-shot: download the model into the shared volume, then load it with a tiny request so
+    # the first real job skips the slow cold start. Both steps are best effort and the service
+    # always exits 0: the worker waits for it, and a registry outage must not stop jobs that do
+    # not need the LLM. Without a usable model, LLM jobs fail with LLM_NOT_CONFIGURED.
     image: ollama/ollama:0.34.0
     entrypoint:
       - sh
       - -c
       - >-
-        ollama pull "$$LLM_MODEL" &&
+        { ollama pull "$$LLM_MODEL" || echo "model pull failed; using the cached model, if any"; };
         { ollama run "$$LLM_MODEL" "Reply with OK." > /dev/null || echo "warm-up skipped"; }
     environment:
       OLLAMA_HOST: http://ollama:11434
