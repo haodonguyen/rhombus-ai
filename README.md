@@ -260,7 +260,7 @@ cd frontend && npm install && npm run lint && npm test && npm run build   # 33 t
 
 ## Deployment
 
-**Live URL:** _to be added_
+**Live URL:** not deployed. The application runs locally with `docker compose up --build`; the steps below deploy the same stack to a single server.
 
 The whole stack runs on one Linux server with Docker, using [`docker-compose.prod.yml`](docker-compose.prod.yml) on top of the development file. The production override:
 - turns DEBUG off and removes source mounts and auto-reload
