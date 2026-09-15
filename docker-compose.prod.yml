@@ -1,0 +1,58 @@
+# Production overrides for a single server:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Differences from development: no source bind mounts or auto-reload, DEBUG off, secrets
+# required from `.env`, and only the web app published publicly (port 80). Flower and the
+# MinIO console listen on localhost only; reach them through an SSH tunnel.
+
+x-prod-env: &prod-env
+  DJANGO_DEBUG: "false"
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?set DJANGO_ALLOWED_HOSTS in .env}
+
+services:
+  web:
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60"
+    environment:
+      <<: *prod-env
+    volumes: !override
+      - results:/data/results
+    ports: !reset []
+    restart: unless-stopped
+
+  worker:
+    environment:
+      <<: *prod-env
+    volumes: !override
+      - results:/data/results
+    restart: unless-stopped
+
+  flower:
+    environment:
+      <<: *prod-env
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:?set FLOWER_BASIC_AUTH in .env}
+    ports: !override
+      - "127.0.0.1:5555:5555"
+    restart: unless-stopped
+
+  minio:
+    ports: !override
+      - "127.0.0.1:9001:9001"
+    restart: unless-stopped
+
+  frontend:
+    ports: !override
+      - "80:80"
+    restart: unless-stopped
+
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  ollama:
+    restart: unless-stopped
