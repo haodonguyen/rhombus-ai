@@ -24,8 +24,10 @@ logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=pydantic.BaseModel)
 
-# Deterministic output: the same inputs should always produce the same answer.
-GENERATION_OPTIONS = {"temperature": 0}
+# Deterministic output: the same inputs should always produce the same answer. The token cap
+# stops a small model that falls into a repetition loop: every answer fits in a few hundred
+# tokens, and without a cap the loop runs until the request times out and is then retried.
+GENERATION_OPTIONS = {"temperature": 0, "num_predict": 1024}
 # Server responses worth retrying later: overloaded, restarting or still loading the model.
 TRANSIENT_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 

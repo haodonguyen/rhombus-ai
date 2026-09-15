@@ -49,6 +49,9 @@ def test_returns_parsed_output_and_sends_expected_request():
     assert call["model"] == MODEL
     assert call["format"] == RegexSuggestion.model_json_schema()
     assert call["options"] == GENERATION_OPTIONS
+    assert call["options"]["temperature"] == 0
+    # A repetition loop must end at the cap rather than run until the request times out.
+    assert 0 < call["options"]["num_predict"] <= 2048
     assert call["messages"] == [
         {"role": "system", "content": "system text"},
         {"role": "user", "content": "user text"},
