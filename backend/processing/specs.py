@@ -17,9 +17,12 @@ MAX_DATE_FORMATS = 10
 MAX_DATE_FORMAT_LENGTH = 40
 MAX_REPLACEMENT_LENGTH = 200
 
-# Datetime pattern letters Spark 3 supports for both parsing and formatting, separators and
-# quoted literals. Week-based letters (Y, w, u, e, c) are rejected by Spark 3, so here too.
-_DATE_FORMAT = re.compile(r"(?:[yMdEaHhmsS]+|'[^']*'|[ ,./:-])+")
+# Datetime pattern letters Spark 3 supports, separators and quoted literals. Week-based letters
+# (Y, w, u, e, c) are rejected by Spark 3, so here too. Weekday names (E) can be rendered but
+# not parsed: Spark raises DATETIME_PATTERN_RECOGNITION when `to_date` is given an E pattern.
+_OUTPUT_FORMAT = re.compile(r"(?:[yMdEaHhmsS]+|'[^']*'|[ ,./:-])+")
+_INPUT_FORMAT = re.compile(r"(?:[yMdaHhmsS]+|'[^']*'|[ ,./:-])+")
+_QUOTED_LITERAL = re.compile(r"'[^']*'")
 _GROUP_REFERENCE = re.compile(r"\$(\d)")
 
 
@@ -71,10 +74,19 @@ def validate_date_normalization(spec: DateNormalization) -> DateNormalization:
         raise InvalidSpecError(
             f"The specification lists more than {MAX_DATE_FORMATS} input date formats."
         )
-    for date_format in (*spec.input_formats, spec.output_format):
-        if len(date_format) > MAX_DATE_FORMAT_LENGTH or not _DATE_FORMAT.fullmatch(date_format):
-            raise InvalidSpecError(f"Unsupported date format: {date_format!r}.")
+    for date_format in spec.input_formats:
+        if "E" in _QUOTED_LITERAL.sub("", date_format):
+            raise InvalidSpecError(
+                f"Weekday names (E) cannot be used to read dates: {date_format!r}."
+            )
+        _check_date_format(date_format, _INPUT_FORMAT)
+    _check_date_format(spec.output_format, _OUTPUT_FORMAT)
     return spec
+
+
+def _check_date_format(date_format: str, allowed: re.Pattern[str]) -> None:
+    if len(date_format) > MAX_DATE_FORMAT_LENGTH or not allowed.fullmatch(date_format):
+        raise InvalidSpecError(f"Unsupported date format: {date_format!r}.")
 
 
 def validate_rule_normalization(spec: RuleNormalization) -> RuleNormalization:

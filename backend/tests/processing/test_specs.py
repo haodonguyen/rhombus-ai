@@ -20,7 +20,7 @@ from processing.specs import (
     [
         ("yyyy-MM-dd",),
         ("dd/MM/yyyy", "MMM d, yyyy"),
-        ("EEE, d MMMM yyyy",),
+        ("d MMMM yyyy",),
         ("yyyy-MM-dd'T'HH:mm:ss",),
     ],
 )
@@ -38,6 +38,7 @@ def test_supported_date_formats(formats):
         (("YYYY-ww",), "yyyy-MM-dd", "Unsupported date format"),
         (("yyyy-MM-dd",), "", "Unsupported date format"),
         (("yyyy-MM-dd;DROP",), "yyyy-MM-dd", "Unsupported date format"),
+        (("EEE, d MMM yyyy",), "yyyy-MM-dd", "Weekday names"),
     ],
 )
 def test_invalid_date_normalizations(input_formats, output_format, message):
@@ -82,3 +83,9 @@ def test_rule_count_limits():
     too_many = tuple(RewriteRule(PATTERN, "$1") for _ in range(MAX_RULES + 1))
     with pytest.raises(InvalidSpecError, match="more than"):
         validate_rule_normalization(RuleNormalization(too_many))
+
+
+def test_weekday_names_are_allowed_when_writing_dates():
+    spec = DateNormalization(("yyyy-MM-dd", "'Week of' d MMM yyyy"), "EEE, d MMM yyyy")
+
+    assert validate_date_normalization(spec) is spec

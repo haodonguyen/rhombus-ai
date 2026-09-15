@@ -1,15 +1,15 @@
 import json
 from collections.abc import Mapping, Sequence
 
-PROMPT_VERSION = "normalize-v1"
+PROMPT_VERSION = "normalize-v2"
 
 SYSTEM_PROMPT = r"""You write a specification that rewrites the values of spreadsheet columns into one consistent format.
 
 You receive the target format the user wants and sample values from the columns. Apache Spark applies your specification to every value in those columns, so cover every way values are written in the samples. Values that no format or rule recognises are left unchanged.
 
 When the values are dates, use kind "date":
-- input_formats: one Java date pattern for each different way dates are written in the samples. Pattern letters: yyyy four-digit year, yy two-digit year, MM two-digit month, M month without padding, MMM short month name (Jan), MMMM full month name (January), dd two-digit day, d day without padding, EEE short weekday name. Put literal letters in single quotes.
-- output_format: the Java date pattern of the target format.
+- input_formats: one Java date pattern for each different way dates are written in the samples. Pattern letters: yyyy four-digit year, yy two-digit year, MM two-digit month, M month without padding, MMM short month name (Jan), MMMM full month name (January), dd two-digit day, d day without padding. Never use E (weekday names) in input_formats: weekday names cannot be read. Put literal letters in single quotes.
+- output_format: the Java date pattern of the target format. It may use EEE for a short weekday name.
 - rules: an empty list.
 
 For other values (phone numbers, codes, names, amounts), use kind "rules":
