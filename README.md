@@ -171,7 +171,7 @@ Measured on the Docker Compose stack: 8 CPUs and 8 GB of memory for the Docker V
 ## LLM integration
 
 - **Provider:** [Ollama](https://ollama.com) runs `qwen2.5-coder:3b` locally in Docker Compose. There's no API key and no per-request cost. The provider is behind one small interface (`apps/llm/client.py`), so a hosted model could replace it.
-- **Structured output:** every request passes a Pydantic model's JSON schema as Ollama's `format`, with temperature 0. Responses are parsed and validated; free text is never trusted.
+- **Structured output:** every request passes a Pydantic model's JSON schema as Ollama's `format`, with temperature 0 and a 1,024-token output cap. Responses are parsed and validated; free text is never trusted. If a small model falls into a repetition loop, the cap stops it and the job fails fast with `LLM_INVALID_RESPONSE` instead of timing out and retrying.
 - **Caching:** Redis keys are `sha256(prompt version, model, normalized input, data sample)`. Only validated answers are cached, and cached answers are validated again when read. If Redis is down, the cache is skipped rather than failing the job.
 - **Prompts:** versioned few-shot prompts live in `apps/llm/prompts/`. Bumping a prompt's version retires its cached answers.
 

@@ -15,7 +15,14 @@ from apps.llm.schemas import (
     RewriteRuleSuggestion,
 )
 from processing.errors import InvalidPatternError, InvalidSpecError
-from processing.specs import DateNormalization, PiiType, RewriteRule, RuleNormalization
+from processing.specs import (
+    MAX_DATE_FORMATS,
+    MAX_RULES,
+    DateNormalization,
+    PiiType,
+    RewriteRule,
+    RuleNormalization,
+)
 from tests.llm_fakes import (
     DATE_FORMATS,
     EMAIL_PATTERN,
@@ -170,6 +177,26 @@ def test_invalid_normalization_is_rejected_and_not_cached(fake_llm):
 
     fake_llm.respond_with(make_date_normalization())
     assert service.generate_normalization("ISO dates", DATE_SAMPLES).cached is False
+
+
+def test_repeated_date_formats_are_tried_once(fake_llm):
+    fake_llm.respond_with(
+        make_date_normalization(input_formats=["yyyy-MM-dd", "dd/MM/yyyy", "dd/MM/yyyy"])
+    )
+
+    spec = service.generate_normalization("ISO dates", DATE_SAMPLES).spec
+
+    assert spec.input_formats == ("yyyy-MM-dd", "dd/MM/yyyy")
+
+
+def test_suggestion_schema_bounds_every_list_so_decoding_cannot_loop():
+    # Seen live: the model repeated "dd/MM/yyyy" in input_formats until the request timed out.
+    schema = NormalizationSuggestion.model_json_schema()
+    pii_schema = PiiClassificationSuggestion.model_json_schema()
+
+    assert schema["properties"]["input_formats"]["maxItems"] == MAX_DATE_FORMATS
+    assert schema["properties"]["rules"]["maxItems"] == MAX_RULES
+    assert pii_schema["$defs"]["ColumnPiiSuggestion"]["properties"]["pii_types"]["maxItems"] > 0
 
 
 def test_saved_normalization_suggestion_is_rebuilt_and_revalidated():

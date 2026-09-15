@@ -1,8 +1,14 @@
-"""Structured outputs requested from the model. Each is enforced with its JSON schema."""
+"""Structured outputs requested from the model. Each is enforced with its JSON schema.
 
-from typing import Literal
+List fields carry a maximum length. Ollama turns it into `maxItems` in the decoding grammar,
+so a small model that starts repeating a list item has to close the list instead of looping.
+"""
+
+from typing import Literal, get_args
 
 from pydantic import BaseModel, Field
+
+from processing.specs import MAX_DATE_FORMATS, MAX_RULES
 
 
 class RegexSuggestion(BaseModel):
@@ -38,11 +44,13 @@ class NormalizationSuggestion(BaseModel):
     feasible: bool = Field(description="False when reformatting cannot achieve the request.")
     kind: Literal["date", "rules"] = Field(description='"date" for dates, "rules" otherwise.')
     input_formats: list[str] = Field(
-        description='For "date": one Java date pattern per date format seen in the samples.'
+        description='For "date": one Java date pattern per date format seen in the samples.',
+        max_length=MAX_DATE_FORMATS,
     )
     output_format: str = Field(description='For "date": Java date pattern of the target format.')
     rules: list[RewriteRuleSuggestion] = Field(
-        description='For "rules": rewrite rules; the first rule that matches a value applies.'
+        description='For "rules": rewrite rules; the first rule that matches a value applies.',
+        max_length=MAX_RULES,
     )
     explanation: str = Field(description="One or two plain sentences for the user.")
 
@@ -55,7 +63,8 @@ PiiTypeName = Literal[
 class ColumnPiiSuggestion(BaseModel):
     column: str = Field(description="Column name exactly as given.")
     pii_types: list[PiiTypeName] = Field(
-        description='Kinds of personal data in the column, or ["none"].'
+        description='Kinds of personal data in the column, or ["none"].',
+        max_length=len(get_args(PiiTypeName)),
     )
 
 

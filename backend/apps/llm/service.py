@@ -126,9 +126,9 @@ def normalization_spec_from_suggestion(
     if not parsed.feasible:
         raise NormalizationNotPossible(parsed.explanation or None)
     if parsed.kind == "date":
-        return validate_date_normalization(
-            DateNormalization(tuple(parsed.input_formats), parsed.output_format)
-        )
+        # A model can list the same format twice; each one only needs trying once.
+        input_formats = tuple(dict.fromkeys(parsed.input_formats))
+        return validate_date_normalization(DateNormalization(input_formats, parsed.output_format))
     return validate_rule_normalization(
         RuleNormalization(tuple(RewriteRule(r.pattern, r.replacement) for r in parsed.rules))
     )
