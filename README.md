@@ -10,6 +10,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 
 ## Contents
 
+- [Requirements coverage](#requirements-coverage)
 - [Quick start](#quick-start)
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
@@ -24,6 +25,26 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 - [Trade-offs and limitations](#trade-offs-and-limitations)
 - [Deployment](#deployment)
 - [Project layout](#project-layout)
+
+---
+
+## Requirements coverage
+
+| Requirement from the brief | How this project meets it |
+|---|---|
+| Import data from Amazon S3 into a PySpark DataFrame | `apps/files` lists bucket objects with boto3; `processing/readers.py` loads CSV and XLSX through `s3a://` (MinIO locally, AWS S3 by configuration) |
+| Django backend with separate API, task and data layers; jobs with status and progress; submit returns immediately | `apps/jobs` returns `202` with a job id, then serves polling and paginated results. Jobs have `QUEUED / RUNNING / SUCCESS / FAILED`, a stage and a progress percentage. `processing/` is a framework-free data layer. |
+| Heavy work in Celery with Redis as broker, result backend and cache; visible progress; graceful failure, retries and cancellation | `apps/jobs/tasks.py` runs every job; Redis databases 0, 1 and 2 hold broker, results and LLM cache. See [Reliability](#reliability). |
+| PySpark engine that scales across partitions and pages results | Built-in Spark functions only, size-based input partitions, one pass per job, DuckDB paging. See [Partitioning and parallelism](#partitioning-and-parallelism). |
+| React UI: pick a file, describe a pattern, give a replacement, choose columns, live progress, paginated results, error and empty states | `frontend/src/features` |
+| LLM turns plain English into a validated regex (invalid patterns and catastrophic backtracking guarded), cached in Redis | `apps/llm` and `processing/regex_safety.py`. See [LLM integration](#llm-integration). |
+| Two additional LLM-driven transformations through the same async Spark pipeline | **Format normalization** and **personal-data masking**. See [What it does](#what-it-does). |
+| Docker Compose brings up the whole stack with one command | `docker compose up --build` |
+| Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
+| Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
+| Tests for the task and Spark layers | 247 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
+| Public deployment | Not deployed. Single-server steps and a production override are provided. See [Deployment](#deployment). |
+| Demo video | To be added at the top of this README |
 
 ---
 
@@ -224,7 +245,7 @@ All settings come from environment variables; see [`.env.example`](.env.example)
 ## Testing
 
 ```bash
-docker compose exec worker pytest        # full backend suite, including Spark tests (245 tests)
+docker compose exec worker pytest        # full backend suite, including Spark tests (247 tests)
 docker compose exec web ruff check .     # backend lint
 cd frontend && npm install && npm run lint && npm test && npm run build   # 33 tests
 ```
