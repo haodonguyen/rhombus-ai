@@ -53,8 +53,8 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 **Prerequisites:** Docker with at least **8 GB of memory** available to containers (Spark uses 2 GB, the local LLM about 2.5 GB).
 
 ```bash
-git clone https://github.com/haodonguyen/rhombus-ai-assessment.git
-cd rhombus-ai-assessment
+git clone https://github.com/haodonguyen/rhombus-ai.git
+cd rhombus-ai
 docker compose up --build
 ```
 
@@ -298,7 +298,7 @@ sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT && sudo netfilter-persistent 
 ```
 
 ```bash
-git clone https://github.com/haodonguyen/rhombus-ai-assessment.git && cd rhombus-ai-assessment
+git clone https://github.com/haodonguyen/rhombus-ai.git && cd rhombus-ai
 cp .env.example .env
 ```
 
