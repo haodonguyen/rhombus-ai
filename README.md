@@ -4,7 +4,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 
 **Stack:** Django REST Framework · Celery · Redis · PySpark · React (Vite + TypeScript) · PostgreSQL · Ollama (local LLM) · MinIO (S3 in development) · Docker Compose.
 
-> **Demo video:** _to be added — an asynchronous job running from submission to paginated results._
+> **[Demo video](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing)** — an asynchronous job running from submission to paginated results.
 
 ---
 
@@ -44,7 +44,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
 | Tests for the task and Spark layers | 249 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
 | Public deployment | Not deployed. Single-server steps and a production override are provided. See [Deployment](#deployment). |
-| Demo video | To be added at the top of this README |
+| Demo video | [Linked at the top of this README](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing) |
 
 ---
 
