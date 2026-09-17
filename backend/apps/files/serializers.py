@@ -10,8 +10,16 @@ class S3ConnectionSerializer(serializers.Serializer):
     region = serializers.CharField(
         max_length=64, required=False, default="us-east-1", allow_blank=True
     )
-    # Set only for S3-compatible storage such as MinIO; blank means Amazon S3.
-    endpoint_url = serializers.URLField(required=False, default="", allow_blank=True)
+    # Set only for S3-compatible storage such as MinIO; blank means Amazon S3. Not a
+    # URLField: Django rejects hosts without a dot, which excludes "http://minio:9000".
+    endpoint_url = serializers.CharField(
+        max_length=255, required=False, default="", allow_blank=True, trim_whitespace=True
+    )
+
+    def validate_endpoint_url(self, value: str) -> str:
+        if value and not value.startswith(("http://", "https://")):
+            raise serializers.ValidationError("Enter a URL starting with http:// or https://.")
+        return value.rstrip("/")
 
 
 class ConnectedSerializer(serializers.Serializer):

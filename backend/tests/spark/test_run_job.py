@@ -157,3 +157,47 @@ def test_mask_pii_job_masks_the_detected_columns(spark, local_source, make_job, 
     ]
     assert job.matched_count == 3
     assert job.transform_spec["columns"][1] == {"column": "Name", "pii_types": ["person_name"]}
+
+
+# --- credentials --------------------------------------------------------------------
+
+
+def test_expired_connection_fails_the_job_with_its_own_code(local_source, make_job):
+    local_source(BRIEF_CSV)
+    job = make_job(pattern=r"@example\.com", connection_id="no-longer-stored")
+
+    run(job)
+
+    assert job.status == JobStatus.FAILED
+    assert job.error_code == "S3_CONNECTION_EXPIRED"
+    assert "Connect again" in job.error_message
+
+
+def test_the_jobs_own_credentials_reach_spark(local_source, make_job, monkeypatch):
+    from apps.files import connections
+
+    connection_id = connections.store(
+        connections.S3Connection(
+            bucket="customer-bucket",
+            region="ap-southeast-2",
+            access_key_id="AKIAUSER",
+            secret_access_key="user-secret",
+        )
+    )
+    applied = {}
+    monkeypatch.setattr(
+        tasks,
+        "apply_s3_credentials",
+        lambda spark, config: applied.update(
+            key=config.aws_access_key_id,
+            secret=config.aws_secret_access_key,
+            region=config.aws_region,
+        ),
+    )
+    local_source(BRIEF_CSV)
+    job = make_job(pattern=r"@example\.com", connection_id=connection_id)
+
+    run(job)
+
+    assert job.status == JobStatus.SUCCESS
+    assert applied == {"key": "AKIAUSER", "secret": "user-secret", "region": "ap-southeast-2"}

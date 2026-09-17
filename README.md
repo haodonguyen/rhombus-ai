@@ -44,7 +44,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Docker Compose brings up the whole stack with one command | `docker compose up --build` |
 | Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
-| Tests for the task and Spark layers | 272 backend tests, including real Spark and eager Celery tasks, plus 39 frontend tests. See [Testing](#testing). |
+| Tests for the task and Spark layers | 278 backend tests, including real Spark and eager Celery tasks, plus 39 frontend tests. See [Testing](#testing). |
 | Public deployment | Live at **https://rhombus-ai.duckdns.org** on a single Compute Engine VM, with HTTPS from Let's Encrypt. See [Deployment](#deployment). |
 | Demo video | [Linked at the top of this README](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing) |
 
@@ -291,7 +291,7 @@ All settings come from environment variables; see [`.env.example`](.env.example)
 ## Testing
 
 ```bash
-docker compose exec worker pytest        # full backend suite, including Spark tests (272 tests)
+docker compose exec worker pytest        # full backend suite, including Spark tests (278 tests)
 docker compose exec web ruff check .     # backend lint
 cd frontend && npm install && npm run lint && npm test && npm run build   # 39 tests
 ```

@@ -72,6 +72,36 @@ def test_rejected_credentials_map_to_clear_errors(api_client, monkeypatch, code,
     assert response.json()["error"]["code"] == error
 
 
+def test_s3_compatible_endpoint_without_a_dotted_host_is_accepted(api_client, s3, monkeypatch):
+    seen = {}
+
+    class Listing:
+        def list_objects_v2(self, **kwargs):
+            return {"Contents": []}
+
+    monkeypatch.setattr(
+        services, "get_s3_client", lambda connection: seen.setdefault("c", connection) and Listing()
+    )
+
+    response = api_client.post(
+        "/api/s3/connections/",
+        {**CREDENTIALS, "endpoint_url": "http://minio:9000/"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert seen["c"].endpoint_url == "http://minio:9000"
+
+
+def test_endpoint_must_be_http(api_client, s3):
+    response = api_client.post(
+        "/api/s3/connections/", {**CREDENTIALS, "endpoint_url": "minio:9000"}, format="json"
+    )
+
+    assert response.status_code == 400
+    assert "endpoint_url" in response.json()["error"]["details"]
+
+
 def test_missing_fields_are_validation_errors(api_client):
     response = api_client.post("/api/s3/connections/", {"bucket": TEST_BUCKET}, format="json")
 
