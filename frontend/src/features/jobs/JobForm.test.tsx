@@ -8,13 +8,15 @@ function requestBody(fetchMock: ReturnType<typeof mockFetch>): unknown {
   return JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
 }
 
-const TARGET = { source_key: "a.csv", target_columns: ["Email"] };
+const TARGET = { connection_id: "conn-1", source_key: "a.csv", target_columns: ["Email"] };
 
 describe("JobForm", () => {
   it("is disabled until a column and a description are provided", async () => {
     mockFetch(() => jsonResponse(makeJob(), 202));
 
-    renderWithClient(<JobForm sourceKey="a.csv" targetColumns={[]} onSubmitted={vi.fn()} />);
+    renderWithClient(
+      <JobForm connectionId="conn-1" sourceKey="a.csv" targetColumns={[]} onSubmitted={vi.fn()} />,
+    );
     await userEvent.type(screen.getByLabelText("Describe what to find"), "email addresses");
 
     expect(screen.getByRole("button", { name: "Run job" })).toBeDisabled();
@@ -27,7 +29,12 @@ describe("JobForm", () => {
     const onSubmitted = vi.fn();
 
     renderWithClient(
-      <JobForm sourceKey="a.csv" targetColumns={["Email"]} onSubmitted={onSubmitted} />,
+      <JobForm
+        connectionId="conn-1"
+        sourceKey="a.csv"
+        targetColumns={["Email"]}
+        onSubmitted={onSubmitted}
+      />,
     );
     await userEvent.type(screen.getByLabelText("Describe what to find"), "  email addresses ");
     await userEvent.type(screen.getByLabelText("Replacement value"), "REDACTED");
@@ -46,7 +53,14 @@ describe("JobForm", () => {
   it("can submit a raw regex instead", async () => {
     const fetchMock = mockFetch(() => jsonResponse(makeJob(), 202));
 
-    renderWithClient(<JobForm sourceKey="a.csv" targetColumns={["Email"]} onSubmitted={vi.fn()} />);
+    renderWithClient(
+      <JobForm
+        connectionId="conn-1"
+        sourceKey="a.csv"
+        targetColumns={["Email"]}
+        onSubmitted={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: "Enter a regex instead" }));
     await userEvent.type(screen.getByLabelText("Regex pattern"), "@example");
     await userEvent.click(screen.getByRole("button", { name: "Run job" }));
@@ -65,7 +79,14 @@ describe("JobForm", () => {
       jsonResponse(makeJob({ transform_type: "normalize_format" }), 202),
     );
 
-    renderWithClient(<JobForm sourceKey="a.csv" targetColumns={["Email"]} onSubmitted={vi.fn()} />);
+    renderWithClient(
+      <JobForm
+        connectionId="conn-1"
+        sourceKey="a.csv"
+        targetColumns={["Email"]}
+        onSubmitted={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("radio", { name: /Normalize format/ }));
 
     expect(screen.queryByLabelText("Replacement value")).not.toBeInTheDocument();
@@ -85,7 +106,14 @@ describe("JobForm", () => {
   it("submits a masking job without any description", async () => {
     const fetchMock = mockFetch(() => jsonResponse(makeJob({ transform_type: "mask_pii" }), 202));
 
-    renderWithClient(<JobForm sourceKey="a.csv" targetColumns={["Email"]} onSubmitted={vi.fn()} />);
+    renderWithClient(
+      <JobForm
+        connectionId="conn-1"
+        sourceKey="a.csv"
+        targetColumns={["Email"]}
+        onSubmitted={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("radio", { name: /Mask personal data/ }));
 
     expect(screen.queryByLabelText("Describe what to find")).not.toBeInTheDocument();
@@ -109,7 +137,14 @@ describe("JobForm", () => {
       ),
     );
 
-    renderWithClient(<JobForm sourceKey="a.csv" targetColumns={["Email"]} onSubmitted={vi.fn()} />);
+    renderWithClient(
+      <JobForm
+        connectionId="conn-1"
+        sourceKey="a.csv"
+        targetColumns={["Email"]}
+        onSubmitted={vi.fn()}
+      />,
+    );
     await userEvent.click(screen.getByRole("button", { name: "Enter a regex instead" }));
     await userEvent.type(screen.getByLabelText("Regex pattern"), "(oops");
     await userEvent.click(screen.getByRole("button", { name: "Run job" }));

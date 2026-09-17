@@ -23,10 +23,12 @@ export interface FilePreview {
 
 export const FILE_PAGE_SIZE = 50;
 
-export function fetchFiles(cursor: string | null): Promise<FilePage> {
-  return apiGet(withQuery("/files/", { cursor, page_size: FILE_PAGE_SIZE }));
+export function fetchFiles(connectionId: string, cursor: string | null): Promise<FilePage> {
+  return apiGet(
+    withQuery("/files/", { connection_id: connectionId, cursor, page_size: FILE_PAGE_SIZE }),
+  );
 }
 
-export function fetchFilePreview(key: string): Promise<FilePreview> {
-  return apiGet(withQuery("/files/columns/", { key }));
+export function fetchFilePreview(connectionId: string, key: string): Promise<FilePreview> {
+  return apiGet(withQuery("/files/columns/", { connection_id: connectionId, key }));
 }

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useId, useState } from "react";
 
 import { describeError, fieldErrors } from "../../api/client";
+import { FieldError } from "../../components/FieldError";
 import { type CreateJob, createJob, type Job, type TransformType } from "../../api/jobs";
 import { jobQueryKey } from "./useJob";
 
@@ -26,12 +27,13 @@ const TRANSFORMS: { value: TransformType; label: string; hint: string }[] = [
 ];
 
 interface JobFormProps {
+  connectionId: string;
   sourceKey: string;
   targetColumns: string[];
   onSubmitted: (job: Job) => void;
 }
 
-export function JobForm({ sourceKey, targetColumns, onSubmitted }: JobFormProps) {
+export function JobForm({ connectionId, sourceKey, targetColumns, onSubmitted }: JobFormProps) {
   const id = useId();
   const queryClient = useQueryClient();
   const [transform, setTransform] = useState<TransformType>("regex_replace");
@@ -56,7 +58,11 @@ export function JobForm({ sourceKey, targetColumns, onSubmitted }: JobFormProps)
 
   /** The request for the chosen transformation, or null while required input is missing. */
   function buildPayload(): CreateJob | null {
-    const target = { source_key: sourceKey, target_columns: targetColumns };
+    const target = {
+      connection_id: connectionId,
+      source_key: sourceKey,
+      target_columns: targetColumns,
+    };
     switch (transform) {
       case "regex_replace": {
         const common = { ...target, transform_type: transform, replacement_value: replacement };
@@ -198,14 +204,5 @@ export function JobForm({ sourceKey, targetColumns, onSubmitted }: JobFormProps)
         {mutation.isPending ? "Submitting…" : "Run job"}
       </button>
     </form>
-  );
-}
-
-function FieldError({ id, messages }: { id?: string; messages?: string[] }) {
-  if (!messages?.length) return null;
-  return (
-    <p id={id} className="field-error">
-      {messages.join(" ")}
-    </p>
   );
 }

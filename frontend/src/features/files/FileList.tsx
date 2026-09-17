@@ -5,14 +5,15 @@ import { fetchFiles } from "../../api/files";
 import { formatBytes } from "../../lib/format";
 
 interface FileListProps {
+  connectionId: string;
   selectedKey: string | null;
   onSelect: (key: string) => void;
 }
 
-export function FileList({ selectedKey, onSelect }: FileListProps) {
+export function FileList({ connectionId, selectedKey, onSelect }: FileListProps) {
   const query = useInfiniteQuery({
-    queryKey: ["files"],
-    queryFn: ({ pageParam }) => fetchFiles(pageParam),
+    queryKey: ["files", connectionId],
+    queryFn: ({ pageParam }) => fetchFiles(connectionId, pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.next_cursor,
   });

@@ -16,7 +16,14 @@ describe("ColumnPicker", () => {
     mockFetch(() => jsonResponse(preview));
     const onChange = vi.fn();
 
-    renderWithClient(<ColumnPicker fileKey="a.csv" selected={["Email"]} onChange={onChange} />);
+    renderWithClient(
+      <ColumnPicker
+        connectionId="conn-1"
+        fileKey="a.csv"
+        selected={["Email"]}
+        onChange={onChange}
+      />,
+    );
     await userEvent.click(await screen.findByRole("checkbox", { name: "ID" }));
 
     expect(onChange).toHaveBeenCalledWith(["ID", "Email"]);
@@ -29,7 +36,12 @@ describe("ColumnPicker", () => {
     const onChange = vi.fn();
 
     renderWithClient(
-      <ColumnPicker fileKey="a.csv" selected={["Name", "Email"]} onChange={onChange} />,
+      <ColumnPicker
+        connectionId="conn-1"
+        fileKey="a.csv"
+        selected={["Name", "Email"]}
+        onChange={onChange}
+      />,
     );
     await userEvent.click(await screen.findByRole("checkbox", { name: "Name" }));
 
@@ -39,7 +51,9 @@ describe("ColumnPicker", () => {
   it("explains when the file has no columns", async () => {
     mockFetch(() => jsonResponse({ ...preview, columns: [], sample_rows: [] }));
 
-    renderWithClient(<ColumnPicker fileKey="a.csv" selected={[]} onChange={vi.fn()} />);
+    renderWithClient(
+      <ColumnPicker connectionId="conn-1" fileKey="a.csv" selected={[]} onChange={vi.fn()} />,
+    );
 
     expect(await screen.findByText(/no header row/)).toBeInTheDocument();
   });

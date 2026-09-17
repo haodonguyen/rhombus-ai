@@ -14,7 +14,7 @@ describe("FileList", () => {
     );
     const onSelect = vi.fn();
 
-    renderWithClient(<FileList selectedKey={null} onSelect={onSelect} />);
+    renderWithClient(<FileList connectionId="conn-1" selectedKey={null} onSelect={onSelect} />);
     await userEvent.click(await screen.findByLabelText(/samples\/b\.xlsx/));
 
     expect(onSelect).toHaveBeenCalledWith("samples/b.xlsx");
@@ -28,7 +28,7 @@ describe("FileList", () => {
         : jsonResponse({ files: [makeFile("a.csv"), makeFile("b.csv")], next_cursor: "b.csv" }),
     );
 
-    renderWithClient(<FileList selectedKey={null} onSelect={vi.fn()} />);
+    renderWithClient(<FileList connectionId="conn-1" selectedKey={null} onSelect={vi.fn()} />);
     await userEvent.click(await screen.findByRole("button", { name: "Load more" }));
 
     expect(await screen.findByText("c.xlsx")).toBeInTheDocument();
@@ -39,7 +39,7 @@ describe("FileList", () => {
   it("shows an empty state", async () => {
     mockFetch(() => jsonResponse({ files: [], next_cursor: null }));
 
-    renderWithClient(<FileList selectedKey={null} onSelect={vi.fn()} />);
+    renderWithClient(<FileList connectionId="conn-1" selectedKey={null} onSelect={vi.fn()} />);
 
     expect(await screen.findByText(/No CSV or Excel files/)).toBeInTheDocument();
   });
@@ -56,7 +56,7 @@ describe("FileList", () => {
         : jsonResponse({ files: [makeFile("a.csv")], next_cursor: null });
     });
 
-    renderWithClient(<FileList selectedKey={null} onSelect={vi.fn()} />);
+    renderWithClient(<FileList connectionId="conn-1" selectedKey={null} onSelect={vi.fn()} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("File storage is unavailable.");
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
 

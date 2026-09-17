@@ -4,15 +4,16 @@ import { describeError } from "../../api/client";
 import { fetchFilePreview } from "../../api/files";
 
 interface ColumnPickerProps {
+  connectionId: string;
   fileKey: string;
   selected: string[];
   onChange: (columns: string[]) => void;
 }
 
-export function ColumnPicker({ fileKey, selected, onChange }: ColumnPickerProps) {
+export function ColumnPicker({ connectionId, fileKey, selected, onChange }: ColumnPickerProps) {
   const query = useQuery({
-    queryKey: ["file-preview", fileKey],
-    queryFn: () => fetchFilePreview(fileKey),
+    queryKey: ["file-preview", connectionId, fileKey],
+    queryFn: () => fetchFilePreview(connectionId, fileKey),
   });
 
   if (query.isPending) return <p className="muted">Reading columns…</p>;

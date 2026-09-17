@@ -29,6 +29,7 @@ export interface Job {
   status: JobStatus;
   stage: string;
   progress: number;
+  source_bucket: string;
   source_key: string;
   file_type: FileType;
   target_columns: string[];
@@ -59,6 +60,8 @@ export function isNormalizationSpec(spec: Job["transform_spec"]): spec is Normal
 }
 
 interface JobTarget {
+  /** The bucket connection the file belongs to. */
+  connection_id: string;
   source_key: string;
   target_columns: string[];
 }

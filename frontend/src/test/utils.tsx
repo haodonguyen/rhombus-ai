@@ -44,6 +44,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     status: "QUEUED",
     stage: "",
     progress: 0,
+    source_bucket: "test-bucket",
     source_key: "samples/customers.csv",
     file_type: "csv",
     target_columns: ["Email"],
