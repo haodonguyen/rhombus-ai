@@ -1,0 +1,29 @@
+# HTTPS for the deployed stack, on top of the production override:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+#
+# Requires a domain name pointing at the server and SITE_DOMAIN set in `.env`. Caddy owns
+# ports 80 and 443, requests a Let's Encrypt certificate on first start and renews it; the
+# frontend is no longer published directly and is reached through Caddy on the shared network.
+services:
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?set SITE_DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+  frontend:
+    ports: !reset []
+
+volumes:
+  caddy-data:
+  caddy-config:

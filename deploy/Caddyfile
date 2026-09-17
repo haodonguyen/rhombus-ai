@@ -1,0 +1,6 @@
+# Caddy terminates TLS for the deployed stack and proxies to the frontend container.
+# It obtains and renews a Let's Encrypt certificate for $SITE_DOMAIN automatically.
+{$SITE_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
