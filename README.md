@@ -166,6 +166,16 @@ Measured on the Docker Compose stack: 8 CPUs and 8 GB of memory for the Docker V
 | LLM generation, cold model | About 135 s; the stack warms the model at startup and keeps it loaded |
 | Repeated description (cache hit) | Whole job in 0.9 s |
 
+Measured on the deployed instance (Compute Engine `e2-standard-2`, 2 vCPUs, 8 GB), 1,000-row sample file:
+
+| Scenario | Result |
+|---|---|
+| Find & replace with an explicit regex | 27 s end to end |
+| Natural-language job, first request (model cold) | 77 s |
+| Natural-language job, warm model | 26 s |
+
+The deployed VM has a quarter of the cores used for the 3M-row benchmark above, so the local LLM dominates its timings; Spark work on the sample file is a few seconds.
+
 ---
 
 ## LLM integration
