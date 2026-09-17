@@ -17,6 +17,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 - [Partitioning and parallelism](#partitioning-and-parallelism)
 - [Performance](#performance)
 - [LLM integration](#llm-integration)
+- [Credentials](#credentials)
 - [Reliability](#reliability)
 - [API](#api)
 - [Configuration](#configuration)
@@ -32,6 +33,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 
 | Requirement from the brief | How this project meets it |
 |---|---|
+| Users provide their own S3 credentials and browse their own bucket | `POST /api/s3/connections/` verifies the keys, then holds them encrypted in Redis under an opaque id for 12 hours. Nothing sensitive reaches PostgreSQL or the logs. See [Credentials](#credentials). |
 | Import data from Amazon S3 into a PySpark DataFrame | `apps/files` lists bucket objects with boto3; `processing/readers.py` loads CSV and XLSX through `s3a://` (MinIO locally, AWS S3 by configuration) |
 | Django backend with separate API, task and data layers; jobs with status and progress; submit returns immediately | `apps/jobs` returns `202` with a job id, then serves polling and paginated results. Jobs have `QUEUED / RUNNING / SUCCESS / FAILED`, a stage and a progress percentage. `processing/` is a framework-free data layer. |
 | Heavy work in Celery with Redis as broker, result backend and cache; visible progress; graceful failure, retries and cancellation | `apps/jobs/tasks.py` runs every job; Redis databases 0, 1 and 2 hold broker, results and LLM cache. See [Reliability](#reliability). |
@@ -42,7 +44,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Docker Compose brings up the whole stack with one command | `docker compose up --build` |
 | Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
-| Tests for the task and Spark layers | 249 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
+| Tests for the task and Spark layers | 272 backend tests, including real Spark and eager Celery tasks, plus 39 frontend tests. See [Testing](#testing). |
 | Public deployment | Live at **https://rhombus-ai.duckdns.org** on a single Compute Engine VM, with HTTPS from Let's Encrypt. See [Deployment](#deployment). |
 | Demo video | [Linked at the top of this README](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing) |
 
@@ -77,8 +79,9 @@ docker compose run --rm minio-seed python /scripts/generate_dataset.py --rows 30
 
 ## What it does
 
-1. **Choose a file.** The file browser lists CSV and XLSX objects in the bucket, paginated with S3 cursors. Picking a file shows its columns and sample rows.
-2. **Choose a transformation and columns.**
+1. **Connect to S3.** You supply the access key and secret key of an IAM user that can list and read your bucket, plus the bucket name and region. The keys are checked against the bucket, then encrypted and held server-side for 12 hours; the browser only ever holds an opaque connection id. Deployments may also offer a demo bucket, so the app can be tried without AWS credentials.
+2. **Choose a file.** The file browser lists CSV and XLSX objects in the connected bucket, paginated with S3 cursors. Picking a file shows its columns and sample rows.
+3. **Choose a transformation and columns.**
 
    | Transformation | You provide | The LLM produces | Spark applies |
    |---|---|---|---|
@@ -86,8 +89,8 @@ docker compose run --rm minio-seed python /scripts/generate_dataset.py --rows 30
    | **Normalize format** | The target format ("dates as YYYY-MM-DD", "phone numbers like 555-123-4567") | Date input and output formats, or ordered rewrite rules with group references | `to_date` + `date_format`, or `when`/`regexp_replace` chains |
    | **Mask personal data** | Nothing | Which columns hold which kinds of PII (email, phone, name, card, identifier, address) | Fixed masks: `j***@example.com`, `***-***-9935`, `J. D.`, `[REDACTED]` |
 
-3. **Watch the job.** The API returns `202` with a job id immediately. The UI polls with backoff and shows the status (`QUEUED → RUNNING → SUCCESS / FAILED`), the current stage, a progress bar driven by Spark task completion, and the generated pattern or specification with its explanation. A running job can be cancelled.
-4. **Browse results.** Processed rows are paginated server-side, with matched rows highlighted.
+4. **Watch the job.** The API returns `202` with a job id immediately. The UI polls with backoff and shows the status (`QUEUED → RUNNING → SUCCESS / FAILED`), the current stage, a progress bar driven by Spark task completion, and the generated pattern or specification with its explanation. A running job can be cancelled.
+5. **Browse results.** Processed rows are paginated server-side, with matched rows highlighted.
 
 The LLM is called **once per job**, never per row. Its answer is validated, cached in Redis and saved on the job, so a retried job never asks again.
 
@@ -199,6 +202,32 @@ Replacement values are escaped for Java, so `$` and `\` are inserted literally. 
 
 ---
 
+## Credentials
+
+The app reads whichever bucket the user connects to, so their AWS keys have to reach the
+Spark job without being stored where they could leak.
+
+| Concern | How it is handled |
+|---|---|
+| In transit | Keys are sent once, to `POST /api/s3/connections/`, over HTTPS. They are never put in a URL or query string. |
+| Verification | Before anything is stored, the keys are used for a one-object `list_objects_v2` against the bucket. Wrong keys return `S3_CREDENTIALS_INVALID`, a missing bucket `S3_BUCKET_NOT_FOUND`. |
+| At rest | Encrypted with Fernet, using a key derived from Django's `SECRET_KEY`, and held only in Redis under a random 32-character id with a 12-hour lifetime (`S3_CONNECTION_TTL`). |
+| In the database | Never. The `Job` row keeps the connection id and the bucket name, nothing else. |
+| In logs | Never. The connection's `__repr__` omits both keys, and rejected credentials are logged as an error code only. |
+| In the browser | Only the opaque connection id is kept, in component state. The secret field is a password input and is cleared on success. |
+| Expiry | When the entry has gone, listing and job submission fail with `S3_CONNECTION_EXPIRED`, and the user reconnects. A job that expires mid-retry fails with the same code rather than a storage error. |
+
+Spark applies the caller's keys to the running session's Hadoop configuration for each job
+(`apply_s3_credentials`), rather than baking them into the session at build time. The worker
+runs one job at a time, so jobs cannot see each other's credentials; a multi-slot worker
+would need one session per slot, or per-bucket configuration.
+
+The demo connection is the exception: it is the bucket configured in the environment, under
+the reserved id `demo`, so the deployed app can be tried without AWS credentials. Set
+`S3_DEMO_ENABLED=false` to remove it.
+
+---
+
 ## Reliability
 
 - **Idempotent jobs:** a job writes to its own output path and overwrites it on re-run. `acks_late` and `task_reject_on_worker_lost` redeliver a job after a worker crash.
@@ -214,8 +243,10 @@ Replacement values are escaped for Java, so `$` and `\` are inserted literally. 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/health/` | Database and Redis reachability |
-| `GET` | `/api/files/?cursor=&page_size=` | List CSV/XLSX files in the bucket |
-| `GET` | `/api/files/columns/?key=` | Column names and up to 10 sample rows |
+| `POST` | `/api/s3/connections/` | Verify an access key and secret key against a bucket → `201` with a connection id |
+| `GET` | `/api/s3/connections/demo/` | Whether this deployment offers a demo bucket |
+| `GET` | `/api/files/?connection_id=&cursor=&page_size=` | List CSV/XLSX files in the connected bucket |
+| `GET` | `/api/files/columns/?connection_id=&key=` | Column names and up to 10 sample rows |
 | `POST` | `/api/jobs/` | Submit a job → `202` with the job |
 | `GET` | `/api/jobs/{id}/` | Status, stage, progress, pattern or spec, counts, error |
 | `POST` | `/api/jobs/{id}/cancel/` | Cancel a queued or running job |
@@ -224,13 +255,16 @@ Replacement values are escaped for Java, so `$` and `\` are inserted literally. 
 Example submissions:
 
 ```json
-{"transform_type": "regex_replace", "source_key": "samples/customers.csv",
+{"access_key_id": "AKIA...", "secret_access_key": "...", "bucket": "my-bucket", "region": "ap-southeast-2"}
+→ {"connection_id": "yP3...", "bucket": "my-bucket", "region": "ap-southeast-2", "demo": false, "expires_in": 43200}
+
+{"transform_type": "regex_replace", "connection_id": "yP3...", "source_key": "samples/customers.csv",
  "target_columns": ["Email"], "nl_prompt": "find email addresses", "replacement_value": "REDACTED"}
 
-{"transform_type": "normalize_format", "source_key": "samples/customers.csv",
+{"transform_type": "normalize_format", "connection_id": "yP3...", "source_key": "samples/customers.csv",
  "target_columns": ["SignupDate"], "nl_prompt": "dates as YYYY-MM-DD"}
 
-{"transform_type": "mask_pii", "source_key": "samples/customers.csv",
+{"transform_type": "mask_pii", "connection_id": "yP3...", "source_key": "samples/customers.csv",
  "target_columns": ["Name", "Email", "Phone", "Notes"]}
 ```
 
@@ -244,6 +278,8 @@ All settings come from environment variables; see [`.env.example`](.env.example)
 |---|---|---|
 | `S3_BUCKET`, `S3_ENDPOINT_URL`, `AWS_*` | MinIO in Compose | Source data. Leave `S3_ENDPOINT_URL` empty for AWS S3. |
 | `LLM_BASE_URL`, `LLM_MODEL` | `http://ollama:11434`, `qwen2.5-coder:3b` | LLM server and model. Empty `LLM_BASE_URL` disables plain-English input. |
+| `S3_CONNECTION_TTL` | `43200` | How long a user's S3 connection stays usable, in seconds |
+| `S3_DEMO_ENABLED` | `true` | Offer the configured bucket as a demo connection |
 | `LLM_TIMEOUT_SECONDS`, `LLM_CACHE_TTL` | `300`, `604800` | LLM request timeout; cache lifetime in seconds |
 | `SPARK_MASTER`, `SPARK_DRIVER_MEMORY` | `local[*]`, `2g` | Spark execution |
 | `SPARK_MAX_PARTITION_BYTES`, `SPARK_SHUFFLE_PARTITIONS` | `16m`, `8` | Partitioning (see above) |
@@ -255,9 +291,9 @@ All settings come from environment variables; see [`.env.example`](.env.example)
 ## Testing
 
 ```bash
-docker compose exec worker pytest        # full backend suite, including Spark tests (249 tests)
+docker compose exec worker pytest        # full backend suite, including Spark tests (272 tests)
 docker compose exec web ruff check .     # backend lint
-cd frontend && npm install && npm run lint && npm test && npm run build   # 33 tests
+cd frontend && npm install && npm run lint && npm test && npm run build   # 39 tests
 ```
 
 - **Spark layer:** real local Spark covers the transforms (nulls, unicode, special characters, column names with dots and spaces), date and rule normalization, every PII mask, sampling, readers (CSV and XLSX give identical results; corrupt XLSX), row ordering across partitions, and job-group cancellation with the progress monitor.
