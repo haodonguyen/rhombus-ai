@@ -4,7 +4,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 
 **Stack:** Django REST Framework · Celery · Redis · PySpark · React (Vite + TypeScript) · PostgreSQL · Ollama (local LLM) · MinIO (S3 in development) · Docker Compose.
 
-> **Live demo: http://34.129.1.73** · **[Demo video](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing)** — an asynchronous job running from submission to paginated results.
+> **Live demo: https://rhombus-ai.duckdns.org** · **[Demo video](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing)** — an asynchronous job running from submission to paginated results.
 
 ---
 
@@ -43,7 +43,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
 | Tests for the task and Spark layers | 249 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
-| Public deployment | Live at **http://34.129.1.73** on a single Compute Engine VM, using the production override. See [Deployment](#deployment). |
+| Public deployment | Live at **https://rhombus-ai.duckdns.org** on a single Compute Engine VM, with HTTPS from Let's Encrypt. See [Deployment](#deployment). |
 | Demo video | [Linked at the top of this README](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing) |
 
 ---
@@ -291,9 +291,9 @@ cd frontend && npm install && npm run lint && npm test && npm run build   # 33 t
 
 ## Deployment
 
-**Live URL: http://34.129.1.73**
+**Live URL: https://rhombus-ai.duckdns.org**
 
-The deployed instance runs the whole stack on one Google Compute Engine VM (Ubuntu 26.04, 2 vCPUs, 8 GB) with the production override below. It is HTTP only; see the note on TLS at the end of this section. The steps below reproduce it on any Linux server.
+The deployed instance runs the whole stack on one Google Compute Engine VM (Ubuntu 26.04, 2 vCPUs, 8 GB) with the production override below. HTTPS is terminated by Caddy with an automatically renewed Let's Encrypt certificate. The steps below reproduce it on any Linux server.
 
 The whole stack runs on one Linux server with Docker, using [`docker-compose.prod.yml`](docker-compose.prod.yml) on top of the development file. The production override:
 - turns DEBUG off and removes source mounts and auto-reload
@@ -329,7 +329,18 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ./scripts/smoke_test.sh http://<server-ip-or-domain>
 ```
 
-The first start downloads the model and Spark jars. For HTTPS, put a TLS-terminating proxy or load balancer (for example Caddy or Cloudflare) in front of port 80.
+The first start downloads the model and Spark jars.
+
+### HTTPS
+
+With a domain name pointing at the server, [`docker-compose.tls.yml`](docker-compose.tls.yml) adds Caddy in front of the stack. Caddy takes ports 80 and 443, proxies to the frontend container, and obtains and renews a Let's Encrypt certificate on its own; plain HTTP is redirected to HTTPS. Add the domain to `.env` and include the extra file:
+
+```bash
+echo "SITE_DOMAIN=example.com" >> .env          # also add it to DJANGO_ALLOWED_HOSTS
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up -d
+```
+
+The server needs inbound **443** open as well as 80, or the certificate request fails.
 
 ---
 
