@@ -14,7 +14,9 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from apps.core.spark import spark_config_from_settings
+from apps.core.exceptions import DomainError
+from apps.core.spark import spark_config_for
+from apps.files import connections
 from apps.files.storage import spark_uri
 from apps.jobs.cancellation import JobCancelled, raise_if_cancel_requested
 from apps.jobs.models import (
@@ -31,7 +33,7 @@ from processing.file_types import FileType
 from processing.pipeline_stats import RunStats
 from processing.progress import ProgressTracker, SparkJobMonitor
 from processing.regex_safety import validate_pattern
-from processing.spark_session import get_spark_session
+from processing.spark_session import apply_s3_credentials, get_spark_session
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +110,10 @@ def _handle_failure(task, job_id: str, exc: Exception) -> None:
         logger.warning("Job %s exceeded its time limit", job_id)
         _cancel_spark_work(job_id)
         _fail(job_id, "TIMEOUT", "The job exceeded its time limit.")
+    elif isinstance(exc, DomainError) and not isinstance(exc, ProcessingError | LLMError):
+        # e.g. the S3 connection expired, or the credentials stopped working.
+        logger.info("Job %s failed: %s", job_id, exc)
+        _fail(job_id, exc.code, str(exc))
     elif isinstance(exc, ProcessingError | LLMError):
         if exc.retryable and task.request.retries < MAX_TRANSIENT_RETRIES:
             logger.warning("Job %s: transient failure (%s); scheduling retry", job_id, exc.code)
@@ -150,7 +156,12 @@ def _run_spark(
     from apps.jobs.transform_builders import builder_for
     from processing.pipeline import run_transform
 
-    spark = get_spark_session(spark_config_from_settings())
+    # The caller's credentials, read once per run; an expired connection fails the job
+    # with a clear message rather than a storage error.
+    s3_connection = connections.load(job.connection_id)
+    spark_config = spark_config_for(s3_connection)
+    spark = get_spark_session(spark_config)
+    apply_s3_credentials(spark, spark_config)
     job_group = str(job.id)
     monitor = SparkJobMonitor(
         spark.sparkContext,
@@ -163,7 +174,7 @@ def _run_spark(
     with monitor:
         return run_transform(
             spark,
-            source_uri=spark_uri(job.source_key),
+            source_uri=spark_uri(s3_connection, job.source_key),
             file_type=FileType(job.file_type),
             output_path=output_path,
             build=builder_for(job, pattern=pattern, progress=progress),

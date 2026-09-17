@@ -88,6 +88,10 @@ class Job(models.Model):
     stage = models.CharField(max_length=32, blank=True, default="")
     progress = models.PositiveSmallIntegerField(default=0)
 
+    # The id of the caller's S3 connection. The credentials themselves live in Redis,
+    # encrypted, and never reach the database; the bucket is kept only to show the user.
+    connection_id = models.CharField(max_length=64, blank=True, default="")
+    source_bucket = models.CharField(max_length=255, blank=True, default="")
     source_key = models.CharField(max_length=1024)
     file_type = models.CharField(max_length=8, choices=[(t.value, t.name) for t in FileType])
     target_columns = models.JSONField(default=list)

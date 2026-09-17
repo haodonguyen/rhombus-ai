@@ -81,5 +81,27 @@ def get_spark_session(config: SparkConfig) -> SparkSession:
     return builder.getOrCreate()
 
 
+def apply_s3_credentials(spark: SparkSession, config: SparkConfig) -> None:
+    """Point the running session's S3A filesystem at one set of credentials.
+
+    The session is created once per worker process but each job carries its own keys, so
+    they are set on the live Hadoop configuration rather than at build time. The worker
+    runs one job at a time (concurrency 1), so there is no cross-job interference; a
+    multi-slot worker would need one session per slot, or per-bucket configuration.
+    """
+    hadoop_conf = spark.sparkContext._jsc.hadoopConfiguration()
+    prefix = "spark.hadoop."
+    for key, value in build_spark_conf(config).items():
+        if key.startswith(prefix + "fs.s3a."):
+            hadoop_conf.set(key[len(prefix) :], value)
+    if not (config.aws_access_key_id and config.aws_secret_access_key):
+        # Fall back to the default chain rather than reusing a previous job's keys.
+        hadoop_conf.unset("fs.s3a.access.key")
+        hadoop_conf.unset("fs.s3a.secret.key")
+    if not config.s3_endpoint_url:
+        hadoop_conf.unset("fs.s3a.endpoint")
+        hadoop_conf.set("fs.s3a.path.style.access", "false")
+
+
 def s3a_uri(bucket: str, key: str) -> str:
     return f"s3a://{bucket}/{key.lstrip('/')}"

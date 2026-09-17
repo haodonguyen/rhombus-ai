@@ -25,7 +25,7 @@ def local_source(monkeypatch, settings, tmp_path, write_csv):
 
     def use(content: str) -> str:
         path = write_csv(content)
-        monkeypatch.setattr(tasks, "spark_uri", lambda key: path)
+        monkeypatch.setattr(tasks, "spark_uri", lambda connection, key: path)
         return path
 
     return use

@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from zipfile import BadZipFile
 
-from django.conf import settings
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from apps.files.connections import S3Connection
 from apps.files.exceptions import PreviewUnavailable, UnsupportedFileType
 from apps.files.storage import get_s3_client, translate_s3_errors
 from processing.file_types import FileType
@@ -52,20 +52,29 @@ def get_file_type(key: str) -> FileType:
     return file_type
 
 
-def list_files(prefix: str = "", cursor: str | None = None, page_size: int = 100) -> FilePage:
+def verify(connection: S3Connection) -> None:
+    """Check that the credentials work and can read the bucket, before storing them."""
+    client = get_s3_client(connection)
+    with translate_s3_errors():
+        client.list_objects_v2(Bucket=connection.bucket, MaxKeys=1)
+
+
+def list_files(
+    connection: S3Connection, prefix: str = "", cursor: str | None = None, page_size: int = 100
+) -> FilePage:
     """List supported files in key order.
 
     The cursor is the key of the last file returned; S3's `StartAfter` resumes after it,
     so pages have exactly `page_size` files even when unsupported objects are skipped.
     """
-    client = get_s3_client()
+    client = get_s3_client(connection)
     files: list[StoredFile] = []
     start_after = cursor or ""
     exhausted = False
 
     with translate_s3_errors():
         while len(files) < page_size and not exhausted:
-            params = {"Bucket": settings.S3_BUCKET, "Prefix": prefix, "MaxKeys": page_size}
+            params = {"Bucket": connection.bucket, "Prefix": prefix, "MaxKeys": page_size}
             if start_after:
                 params["StartAfter"] = start_after
             response = client.list_objects_v2(**params)
@@ -89,18 +98,18 @@ def list_files(prefix: str = "", cursor: str | None = None, page_size: int = 100
     return FilePage(files=files, next_cursor=next_cursor)
 
 
-def get_file_preview(key: str) -> FilePreview:
+def get_file_preview(connection: S3Connection, key: str) -> FilePreview:
     file_type = get_file_type(key)
-    client = get_s3_client()
+    client = get_s3_client(connection)
 
     with translate_s3_errors(key):
-        size = client.head_object(Bucket=settings.S3_BUCKET, Key=key)["ContentLength"]
+        size = client.head_object(Bucket=connection.bucket, Key=key)["ContentLength"]
         if size == 0:
             return FilePreview(key=key, file_type=file_type, columns=[], sample_rows=[])
 
         if file_type is FileType.CSV:
             response = client.get_object(
-                Bucket=settings.S3_BUCKET, Key=key, Range=f"bytes=0-{CSV_PREVIEW_BYTES - 1}"
+                Bucket=connection.bucket, Key=key, Range=f"bytes=0-{CSV_PREVIEW_BYTES - 1}"
             )
             content = response["Body"].read()
             columns, rows = parse_csv_preview(content, truncated=size > len(content))
@@ -110,7 +119,7 @@ def get_file_preview(key: str) -> FilePreview:
                     "This Excel file is too large to preview; its columns are checked "
                     "when the job runs."
                 )
-            content = client.get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
+            content = client.get_object(Bucket=connection.bucket, Key=key)["Body"].read()
             columns, rows = parse_xlsx_preview(content)
 
     return FilePreview(key=key, file_type=file_type, columns=columns, sample_rows=rows)

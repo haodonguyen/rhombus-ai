@@ -103,6 +103,11 @@ SPARK_JARS_DIR = env("SPARK_JARS_DIR", default=None)
 # --- LLM ----------------------------------------------------------------------
 # Local Ollama server. An empty LLM_BASE_URL disables natural-language patterns; raw
 # regex jobs still work.
+# How long a user-supplied S3 connection stays usable before it must be entered again.
+S3_CONNECTION_TTL = env.int("S3_CONNECTION_TTL", default=12 * 60 * 60)
+# Offer the configured bucket as a demo, so the app can be tried without AWS credentials.
+S3_DEMO_ENABLED = env.bool("S3_DEMO_ENABLED", default=True)
+
 LLM_BASE_URL = env("LLM_BASE_URL", default="")
 LLM_MODEL = env("LLM_MODEL", default="qwen2.5-coder:3b")
 LLM_CACHE_TTL = env.int("LLM_CACHE_TTL", default=60 * 60 * 24 * 7)

@@ -1,4 +1,9 @@
-from processing.spark_session import SparkConfig, build_spark_conf, s3a_uri
+from processing.spark_session import (
+    SparkConfig,
+    apply_s3_credentials,
+    build_spark_conf,
+    s3a_uri,
+)
 
 
 def test_minio_endpoint_enables_path_style_without_ssl():
@@ -55,3 +60,61 @@ def test_input_partition_size_is_configurable():
 
 def test_unparseable_dates_become_null_rather_than_failing():
     assert build_spark_conf(SparkConfig())["spark.sql.legacy.timeParserPolicy"] == "CORRECTED"
+
+
+class FakeHadoopConf:
+    """Stands in for Spark's live Hadoop configuration."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, str] = {}
+
+    def set(self, key: str, value: str) -> None:
+        self.values[key] = value
+
+    def unset(self, key: str) -> None:
+        self.values.pop(key, None)
+
+
+class FakeSpark:
+    def __init__(self, conf: FakeHadoopConf) -> None:
+        self.sparkContext = type(
+            "Context", (), {"_jsc": type("JSC", (), {"hadoopConfiguration": lambda self: conf})()}
+        )()
+
+
+def test_credentials_are_applied_to_a_running_session():
+    conf = FakeHadoopConf()
+
+    apply_s3_credentials(
+        FakeSpark(conf),
+        SparkConfig(
+            aws_access_key_id="AKIAUSER",
+            aws_secret_access_key="user-secret",
+            aws_region="ap-southeast-2",
+        ),
+    )
+
+    assert conf.values["fs.s3a.access.key"] == "AKIAUSER"
+    assert conf.values["fs.s3a.secret.key"] == "user-secret"
+    assert conf.values["fs.s3a.endpoint.region"] == "ap-southeast-2"
+    # Spark-level keys stay out of the Hadoop configuration.
+    assert not any(key.startswith("spark.") for key in conf.values)
+
+
+def test_a_later_job_without_keys_does_not_inherit_the_previous_ones():
+    conf = FakeHadoopConf()
+    apply_s3_credentials(
+        FakeSpark(conf),
+        SparkConfig(
+            aws_access_key_id="AKIAUSER",
+            aws_secret_access_key="user-secret",
+            s3_endpoint_url="http://minio:9000",
+        ),
+    )
+
+    apply_s3_credentials(FakeSpark(conf), SparkConfig())
+
+    assert "fs.s3a.access.key" not in conf.values
+    assert "fs.s3a.secret.key" not in conf.values
+    assert "fs.s3a.endpoint" not in conf.values
+    assert conf.values["fs.s3a.path.style.access"] == "false"

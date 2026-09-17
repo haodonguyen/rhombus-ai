@@ -9,6 +9,7 @@ from uuid import UUID
 from django.db import transaction
 from django.utils import timezone
 
+from apps.files import connections
 from apps.files import services as file_services
 from apps.files.exceptions import PreviewUnavailable, StoredFileNotFound
 from apps.jobs.exceptions import InvalidJobRequest, JobNotCancellable, JobNotFound, JobNotReady
@@ -26,6 +27,7 @@ class JobRequest:
     """A validated submission; which optional fields apply depends on the transform type."""
 
     transform_type: str
+    connection_id: str
     source_key: str
     target_columns: list[str]
     nl_prompt: str = ""
@@ -35,10 +37,13 @@ class JobRequest:
 
 def submit_job(request: JobRequest) -> Job:
     file_type = file_services.get_file_type(request.source_key)
-    validate_source(request.source_key, request.target_columns)
+    connection = connections.load(request.connection_id)
+    validate_source(connection, request.source_key, request.target_columns)
 
     job = Job.objects.create(
         transform_type=request.transform_type,
+        connection_id=request.connection_id,
+        source_bucket=connection.bucket,
         source_key=request.source_key,
         file_type=file_type,
         target_columns=request.target_columns,
@@ -54,13 +59,13 @@ def submit_job(request: JobRequest) -> Job:
     return job
 
 
-def validate_source(key: str, columns: list[str]) -> None:
+def validate_source(connection: connections.S3Connection, key: str, columns: list[str]) -> None:
     """Reject missing files and unknown columns up front, using the cheap preview reader.
 
     Files too large to preview are not checked here; the Spark job checks them again anyway.
     """
     try:
-        preview = file_services.get_file_preview(key)
+        preview = file_services.get_file_preview(connection, key)
     except StoredFileNotFound as exc:
         raise InvalidJobRequest(details={"source_key": [exc.message]}) from exc
     except PreviewUnavailable:

@@ -19,6 +19,7 @@ class JobCreateSerializer(serializers.Serializer):
     transform_type = serializers.ChoiceField(
         choices=TransformType.choices, required=False, default=TransformType.REGEX_REPLACE
     )
+    connection_id = serializers.CharField(max_length=64)
     source_key = serializers.CharField(max_length=1024)
     target_columns = serializers.ListField(
         child=serializers.CharField(max_length=255, trim_whitespace=False),
@@ -99,6 +100,7 @@ class JobSerializer(serializers.ModelSerializer):
             "status",
             "stage",
             "progress",
+            "source_bucket",
             "source_key",
             "file_type",
             "target_columns",

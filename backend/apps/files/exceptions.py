@@ -20,3 +20,18 @@ class PreviewUnavailable(DomainError):
 class StorageUnavailable(ServiceUnavailableError):
     code = "STORAGE_UNAVAILABLE"
     default_message = "File storage is unavailable. Please retry shortly."
+
+
+class S3CredentialsInvalid(DomainError):
+    code = "S3_CREDENTIALS_INVALID"
+    default_message = "S3 rejected these credentials. Check the access key and secret key."
+
+
+class S3BucketNotFound(NotFoundError):
+    code = "S3_BUCKET_NOT_FOUND"
+    default_message = "That bucket does not exist, or these credentials cannot see it."
+
+
+class S3ConnectionExpired(DomainError):
+    code = "S3_CONNECTION_EXPIRED"
+    default_message = "The S3 connection has expired. Connect again to continue."

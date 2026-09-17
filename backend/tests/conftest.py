@@ -35,6 +35,8 @@ def make_job(db):
 
     def factory(**overrides) -> Job:
         fields = {
+            "connection_id": "demo",
+            "source_bucket": TEST_BUCKET,
             "source_key": "samples/people.csv",
             "file_type": "csv",
             "target_columns": ["Email"],
@@ -71,3 +73,18 @@ def s3(settings):
         client = boto3.client("s3", region_name="us-east-1")
         client.create_bucket(Bucket=TEST_BUCKET)
         yield client
+
+
+@pytest.fixture
+def s3_connection(s3) -> str:
+    """A stored connection id for the moto bucket, as a user's own credentials would be."""
+    from apps.files.connections import S3Connection, store
+
+    return store(
+        S3Connection(
+            bucket=TEST_BUCKET,
+            region="us-east-1",
+            access_key_id="AKIAUSERSUPPLIED",
+            secret_access_key="user-secret",
+        )
+    )

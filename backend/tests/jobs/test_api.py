@@ -28,6 +28,8 @@ def people_csv(s3) -> str:
 
 def payload(**overrides):
     return {
+        # The demo connection: the bucket this deployment configures for itself.
+        "connection_id": "demo",
         "source_key": "samples/people.csv",
         "target_columns": ["Email"],
         "pattern": EMAIL_PATTERN,
@@ -204,11 +206,40 @@ def test_results_missing_output_returns_410(api_client, make_job, tmp_path):
     assert response.json()["error"]["code"] == "RESULTS_UNAVAILABLE"
 
 
+def test_submit_with_the_callers_own_connection_records_the_bucket(
+    api_client, people_csv, s3_connection, enqueue, django_capture_on_commit_callbacks
+):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = api_client.post(
+            "/api/jobs/", payload(connection_id=s3_connection), format="json"
+        )
+
+    assert response.status_code == 202
+    assert response.json()["source_bucket"] == TEST_BUCKET
+    job = Job.objects.get(pk=response.json()["id"])
+    assert job.connection_id == s3_connection
+    # The keys stay in the cache; only the opaque id reaches the database.
+    assert "secret" not in str(job.__dict__).lower()
+
+
+def test_submit_with_an_expired_connection_is_rejected(api_client, people_csv, enqueue):
+    response = api_client.post("/api/jobs/", payload(connection_id="gone"), format="json")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "S3_CONNECTION_EXPIRED"
+    enqueue.apply_async.assert_not_called()
+
+
 # --- other transforms -----------------------------------------------------------------
 
 
 def target(**overrides):
-    return {"source_key": "samples/people.csv", "target_columns": ["Name", "Email"], **overrides}
+    return {
+        "connection_id": "demo",
+        "source_key": "samples/people.csv",
+        "target_columns": ["Name", "Email"],
+        **overrides,
+    }
 
 
 def test_submit_normalize_job(api_client, people_csv, enqueue, django_capture_on_commit_callbacks):
