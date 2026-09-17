@@ -4,7 +4,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 
 **Stack:** Django REST Framework · Celery · Redis · PySpark · React (Vite + TypeScript) · PostgreSQL · Ollama (local LLM) · MinIO (S3 in development) · Docker Compose.
 
-> **[Demo video](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing)** — an asynchronous job running from submission to paginated results.
+> **Live demo: http://34.129.1.73** · **[Demo video](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing)** — an asynchronous job running from submission to paginated results.
 
 ---
 
@@ -43,7 +43,7 @@ A web application for transforming large CSV and Excel files stored in S3 using 
 | Evidence on a sizeable dataset | 3,000,000-row benchmark. See [Performance](#performance). |
 | Observability: task metrics and worker monitoring | Flower, per-job metrics and job-id logs. See [Observability](#observability). |
 | Tests for the task and Spark layers | 249 backend tests, including real Spark and eager Celery tasks, plus 33 frontend tests. See [Testing](#testing). |
-| Public deployment | Not deployed. Single-server steps and a production override are provided. See [Deployment](#deployment). |
+| Public deployment | Live at **http://34.129.1.73** on a single Compute Engine VM, using the production override. See [Deployment](#deployment). |
 | Demo video | [Linked at the top of this README](https://drive.google.com/file/d/1VQrKD5_5hs5_WEDhK873NRXfLwwW5ex9/view?usp=sharing) |
 
 ---
@@ -281,7 +281,9 @@ cd frontend && npm install && npm run lint && npm test && npm run build   # 33 t
 
 ## Deployment
 
-**Live URL:** not deployed. The application runs locally with `docker compose up --build`; the steps below deploy the same stack to a single server.
+**Live URL: http://34.129.1.73**
+
+The deployed instance runs the whole stack on one Google Compute Engine VM (Ubuntu 26.04, 2 vCPUs, 8 GB) with the production override below. It is HTTP only; see the note on TLS at the end of this section. The steps below reproduce it on any Linux server.
 
 The whole stack runs on one Linux server with Docker, using [`docker-compose.prod.yml`](docker-compose.prod.yml) on top of the development file. The production override:
 - turns DEBUG off and removes source mounts and auto-reload
